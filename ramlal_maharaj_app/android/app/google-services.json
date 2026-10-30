@@ -1,0 +1,68 @@
+{
+  "project_info": {
+    "project_number": "735985536071",
+    "project_id": "prabhu-ramlal-app",
+    "storage_bucket": "prabhu-ramlal-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:735985536071:android:97d95380b4a4011d62f562",
+        "android_client_info": {
+          "package_name": "com.ramlalmaharaj.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "735985536071-n2bvs0k7g3pvv2skln78r6spmpf9nb6k.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBxFSRYLKxN_qxQyBY1L6O70mv71BtDEm8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "735985536071-n2bvs0k7g3pvv2skln78r6spmpf9nb6k.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:735985536071:android:bebd737912df160762f562",
+        "android_client_info": {
+          "package_name": "com.ramlalmaharaj.ramlal_maharaj_app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "735985536071-n2bvs0k7g3pvv2skln78r6spmpf9nb6k.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBxFSRYLKxN_qxQyBY1L6O70mv71BtDEm8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "735985536071-n2bvs0k7g3pvv2skln78r6spmpf9nb6k.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
