@@ -39,6 +39,7 @@ dependencies:
   just_audio: ^0.10.5
   file_picker: ^10.3.7
   pdfrx: ^2.2.24
+  flutter_tts: ^4.2.3
 
 
   # The following adds the Cupertino Icons font to your application.
