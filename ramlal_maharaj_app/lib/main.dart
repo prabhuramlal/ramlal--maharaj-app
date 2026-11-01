@@ -165,11 +165,18 @@ class _ContentPageState extends State<ContentPage> {
         return ListView.separated(padding: const EdgeInsets.all(16), itemCount: rows.length, separatorBuilder: (_, __) => const SizedBox(height: 10),
           itemBuilder: (context, i) {
             final item = rows[i];
+            final imageUrl = (item['thumbnail_url'] ?? item['file_url'] ?? '').toString();
+            final isGallery = widget.category.toLowerCase() == 'gallery';
             return Card(color: cardWhite, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: const BorderSide(color: paleGold)),
-              child: ListTile(leading: const Icon(Icons.play_circle_outline, color: maroon),
+              child: ListTile(
+                leading: isGallery && imageUrl.isNotEmpty
+                  ? ClipRRect(borderRadius: BorderRadius.circular(9), child: Image.network(imageUrl, width: 58, height: 58, fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => const SizedBox(width: 58, height: 58, child: Icon(Icons.image_not_supported, color: champagne))))
+                  : const Icon(Icons.play_circle_outline, color: maroon),
                 title: Text((item['title'] ?? 'Devotional content').toString(), style: const TextStyle(fontWeight: FontWeight.w600, color: brown)),
                 subtitle: Text((item['description'] ?? '').toString(), maxLines: 2, overflow: TextOverflow.ellipsis),
-                trailing: const Icon(Icons.open_in_new, color: champagne), onTap: () => openItem(context, item)));
+                trailing: Icon(isGallery ? Icons.zoom_in : Icons.open_in_new, color: champagne),
+                onTap: () => isGallery ? openGalleryImage(context, item) : openItem(context, item)));
           });
       })),
     ]);
@@ -180,6 +187,38 @@ class _ContentPageState extends State<ContentPage> {
     return Scaffold(appBar: AppBar(title: Text(widget.title)), body: content);
   }
 }
+void openGalleryImage(BuildContext context, Map<String, dynamic> item) {
+  final link = (item['file_url'] ?? item['thumbnail_url'] ?? '').toString();
+  if (link.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Image is not available yet.')));
+    return;
+  }
+  Navigator.push(context, MaterialPageRoute(builder: (_) => GalleryImagePage(
+    imageUrl: link,
+    title: (item['title'] ?? 'Guru Darshan').toString(),
+  )));
+}
+
+class GalleryImagePage extends StatelessWidget {
+  final String imageUrl, title;
+  const GalleryImagePage({super.key, required this.imageUrl, required this.title});
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: const Color(0xFF211A18),
+    appBar: AppBar(backgroundColor: const Color(0xFF211A18), foregroundColor: Colors.white, title: Text(title)),
+    body: Center(child: InteractiveViewer(
+      minScale: 0.7, maxScale: 4,
+      child: Image.network(imageUrl, fit: BoxFit.contain,
+        loadingBuilder: (context, child, progress) => progress == null ? child :
+          const Center(child: CircularProgressIndicator(color: champagne)),
+        errorBuilder: (_, __, ___) => const Padding(padding: EdgeInsets.all(24),
+          child: Text('Unable to load this image. Please check its image URL.', textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.white))),
+      ),
+    )),
+  );
+}
+
 Future<void> openItem(BuildContext context, Map<String, dynamic> item) async {
   final link = (item['file_url'] ?? '').toString();
   final uri = Uri.tryParse(link);
