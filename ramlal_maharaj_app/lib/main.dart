@@ -362,16 +362,16 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
   final title = TextEditingController(), description = TextEditingController();
   String category = 'Bhajan';
   final categories = const ['Bhajan','Aarti','Books','Guru Vani','Pravachan','Satsang','Gallery','Notifications'];
+
   Future<void> upload() async {
     final client = Supabase.instance.client;
-    final user = client.auth.currentUser;
-    final role = user?.appMetadata['role']?.toString();
+    final role = client.auth.currentUser?.appMetadata['role']?.toString();
     if (role != 'admin' && role != 'super_admin') {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Administrator permission required.')));
       return;
     }
-    if (category != 'Gallery' && title.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter a title.')));
+    if (category != 'Gallery' && category != 'Pravachan' && title.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter a content title.')));
       return;
     }
     final picked = await FilePicker.platform.pickFiles(withData: true, type: FileType.any);
@@ -379,48 +379,136 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     setState(() => busy = true);
     try {
       final file = picked.files.single;
-      final path = 'uploads/${DateTime.now().millisecondsSinceEpoch}_${file.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_')}';
+      final safeName = file.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+      final path = 'uploads/${DateTime.now().millisecondsSinceEpoch}_$safeName';
       await client.storage.from('prabhu').uploadBinary(path, file.bytes!,
-        fileOptions: FileOptions(upsert: false, contentType: file.extension == 'pdf' ? 'application/pdf' : null));
+        fileOptions: FileOptions(upsert: false));
       final url = client.storage.from('prabhu').getPublicUrl(path);
-      final contentTitle = title.text.trim().isNotEmpty
-          ? title.text.trim()
-          : (category == 'Gallery'
-              ? file.name.replaceAll(RegExp(r'\\.[^.]+        'file_url': url, 'thumbnail_url': category == 'Gallery' ? url : null, 'published': true,
+      final contentTitle = category == 'Gallery'
+          ? 'गुरु दर्शन'
+          : (title.text.trim().isNotEmpty ? title.text.trim() : file.name);
+      await client.from('devotional_content').insert({
+        'title': contentTitle, 'category': category, 'description': description.text.trim(),
+        'file_url': url, 'thumbnail_url': category == 'Gallery' ? url : null, 'published': true,
       });
       title.clear(); description.clear();
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Content uploaded and published.')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Content uploaded and published.')));
+        setState(() {});
+      }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload failed: ${e.toString()}')));
     } finally { if (mounted) setState(() => busy = false); }
   }
+
+  Future<List<Map<String, dynamic>>> loadManagedContent() async {
+    final rows = await Supabase.instance.client.from('devotional_content')
+      .select('id,title,category,file_url,created_at,published')
+      .order('created_at', ascending: false);
+    return List<Map<String, dynamic>>.from(rows);
+  }
+
+  Future<void> removeContent(Map<String, dynamic> item) async {
+    final id = item['id'];
+    if (id == null) return;
+    final confirmed = await showDialog<bool>(context: context, builder: (dialogContext) => AlertDialog(
+      title: const Text('Remove content?'),
+      content: Text('This will remove "${item['title'] ?? 'this item'}" from the app.'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+        FilledButton(onPressed: () => Navigator.pop(dialogContext, true),
+          style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700), child: const Text('Remove')),
+      ],
+    ));
+    if (confirmed != true || !mounted) return;
+    setState(() => busy = true);
+    try {
+      final client = Supabase.instance.client;
+      final url = (item['file_url'] ?? '').toString();
+      const marker = '/storage/v1/object/public/prabhu/';
+      final markerIndex = url.indexOf(marker);
+      if (markerIndex >= 0) {
+        final storagePath = Uri.decodeComponent(url.substring(markerIndex + marker.length));
+        try { await client.storage.from('prabhu').remove([storagePath]); } catch (_) {}
+      }
+      await client.from('devotional_content').delete().eq('id', id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Content removed.')));
+        setState(() {});
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not remove content: ${e.toString()}')));
+    } finally { if (mounted) setState(() => busy = false); }
+  }
+
   @override
   void dispose() { title.dispose(); description.dispose(); super.dispose(); }
-  @override
-  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Admin Dashboard'), actions: [
-    IconButton(tooltip: 'Sign out', onPressed: () async { await Supabase.instance.client.auth.signOut(); if (context.mounted) Navigator.pop(context); }, icon: const Icon(Icons.logout))
-  ]), body: ListView(padding: const EdgeInsets.all(20), children: [
-    const Text('Manage devotional content', style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold, color: maroon)),
-    const SizedBox(height: 8), const Text('Upload photos, audio, PDFs and video links. Published items appear in the app.', style: TextStyle(color: brown)),
+
+  Widget uploadTab() => ListView(padding: const EdgeInsets.all(20), children: [
+    const Text('Upload devotional content', style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold, color: maroon)),
+    const SizedBox(height: 8),
+    const Text('Upload photos, bhajans, aarti, books and other devotional media. Uploaded content is published immediately.', style: TextStyle(color: brown)),
     const SizedBox(height: 20),
-    if (category != 'Gallery') ...[
+    DropdownButtonFormField<String>(value: category, decoration: const InputDecoration(labelText: 'Content category'),
+      items: categories.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+      onChanged: busy ? null : (v) { if (v != null) setState(() => category = v); }),
+    const SizedBox(height: 12),
+    if (category == 'Gallery')
+      const Padding(padding: EdgeInsets.only(bottom: 12),
+        child: Text('Gallery photos are added without a photo title.', style: TextStyle(color: brown)))
+    else ...[
       TextField(controller: title, decoration: const InputDecoration(labelText: 'Content title')),
       const SizedBox(height: 12),
-    ] else
-      const Padding(
-        padding: EdgeInsets.only(bottom: 12),
-        child: Text('Photo title is optional. The image file name will be used automatically.', style: TextStyle(color: brown)),
-      ),
-    TextField(controller: description, maxLines: 3, decoration: const InputDecoration(labelText: 'Description')),
-    const SizedBox(height: 12),
-    DropdownButtonFormField<String>(value: category, decoration: const InputDecoration(labelText: 'Category'),
-      items: categories.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(), onChanged: busy ? null : (v) { if (v != null) setState(() => category = v); }),
+    ],
+    TextField(controller: description, maxLines: 3, decoration: const InputDecoration(labelText: 'Description (optional)')),
     const SizedBox(height: 18),
-    FilledButton.icon(onPressed: busy ? null : upload, icon: const Icon(Icons.cloud_upload), label: Text(busy ? 'Uploading...' : 'Choose file & publish'),
+    FilledButton.icon(onPressed: busy ? null : upload, icon: const Icon(Icons.cloud_upload),
+      label: Text(busy ? 'Uploading...' : 'Choose file & publish'),
       style: FilledButton.styleFrom(backgroundColor: maroon)),
-    const SizedBox(height: 12),
-    const Text('Security note: administrator rights are verified from the signed-in account role and enforced again by Supabase Row Level Security.', style: TextStyle(fontSize: 12, color: brown)),
-  ]));
+    const SizedBox(height: 20),
+    const Text('Access is restricted to authorised administrator accounts. Supabase policies also enforce permissions.', style: TextStyle(fontSize: 12, color: brown)),
+  ]);
+
+  Widget manageTab() => FutureBuilder<List<Map<String, dynamic>>>(
+    key: ValueKey(DateTime.now().millisecondsSinceEpoch ~/ 1000),
+    future: loadManagedContent(),
+    builder: (context, snapshot) {
+      if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: champagne));
+      if (snapshot.hasError) return Center(child: Text('Unable to load content: ${snapshot.error}'));
+      final rows = snapshot.data ?? [];
+      if (rows.isEmpty) return const Center(child: Text('No uploaded content yet.'));
+      return RefreshIndicator(
+        onRefresh: () async { setState(() {}); await Future<void>.delayed(const Duration(milliseconds: 250)); },
+        child: ListView.separated(padding: const EdgeInsets.all(16), itemCount: rows.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 8),
+          itemBuilder: (context, index) {
+            final item = rows[index];
+            final isPhoto = item['category'] == 'Gallery';
+            return Card(color: cardWhite, child: ListTile(
+              leading: Icon(isPhoto ? Icons.image : Icons.perm_media, color: champagne),
+              title: Text(isPhoto ? 'Guru Darshan photo' : (item['title'] ?? 'Untitled').toString()),
+              subtitle: Text('${item['category'] ?? 'Media'} • ${item['published'] == true ? 'Published' : 'Draft'}'),
+              trailing: IconButton(tooltip: 'Remove media', icon: const Icon(Icons.delete_outline, color: Colors.red),
+                onPressed: busy ? null : () => removeContent(item)),
+            ));
+          }),
+      );
+    },
+  );
+
+  @override
+  Widget build(BuildContext context) => DefaultTabController(length: 2, child: Scaffold(
+    appBar: AppBar(title: const Text('Admin Portal'), actions: [
+      IconButton(tooltip: 'Sign out', onPressed: () async {
+        await Supabase.instance.client.auth.signOut();
+        if (context.mounted) Navigator.pop(context);
+      }, icon: const Icon(Icons.logout)),
+    ], bottom: const TabBar(tabs: [
+      Tab(icon: Icon(Icons.cloud_upload_outlined), text: 'Upload'),
+      Tab(icon: Icon(Icons.library_music_outlined), text: 'Manage Media'),
+    ])),
+    body: TabBarView(children: [uploadTab(), manageTab()]),
+  ));
 }
 
 class EventsPage extends StatelessWidget {
@@ -453,9 +541,30 @@ class SadhanaPage extends StatefulWidget {
 }
 class _SadhanaPageState extends State<SadhanaPage> {
   Timer? timer;
+  final FlutterTts tts = FlutterTts();
   int minutes = 15, remaining = 900;
   bool running = false;
   final completed = <String>[];
+
+  @override
+  void initState() {
+    super.initState();
+    tts.setVolume(1.0);
+    tts.setSpeechRate(0.42);
+    tts.setPitch(1.0);
+    tts.setLanguage('hi-IN');
+  }
+
+  Future<void> announceCompletion() async {
+    try {
+      await tts.stop();
+      await tts.setVolume(1.0);
+      await tts.setLanguage('hi-IN');
+      await tts.speak('ॐ गुरवे नमः');
+    } catch (_) {
+      await SystemSound.play(SystemSoundType.alert);
+    }
+  }
 
   void choose(int m) {
     timer?.cancel();
@@ -468,31 +577,19 @@ class _SadhanaPageState extends State<SadhanaPage> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Custom Sadhana Timer'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          keyboardType: TextInputType.number,
-          decoration: const InputDecoration(
-            labelText: 'Duration in minutes',
-            hintText: 'For example, 45',
-            helperText: 'Enter 1 to 1440 minutes (up to 24 hours)',
-          ),
-        ),
+        content: TextField(controller: controller, autofocus: true, keyboardType: TextInputType.number,
+          decoration: const InputDecoration(labelText: 'Duration in minutes', hintText: 'For example, 45',
+            helperText: 'Enter 1 to 1440 minutes (up to 24 hours)')),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
-          FilledButton(
-            onPressed: () {
-              final parsed = int.tryParse(controller.text.trim());
-              if (parsed == null || parsed < 1 || parsed > 1440) {
-                ScaffoldMessenger.of(dialogContext).showSnackBar(
-                  const SnackBar(content: Text('Please enter 1 to 1440 minutes.')),
-                );
-                return;
-              }
-              Navigator.pop(dialogContext, parsed);
-            },
-            child: const Text('Set Timer'),
-          ),
+          FilledButton(onPressed: () {
+            final parsed = int.tryParse(controller.text.trim());
+            if (parsed == null || parsed < 1 || parsed > 1440) {
+              ScaffoldMessenger.of(dialogContext).showSnackBar(const SnackBar(content: Text('Please enter 1 to 1440 minutes.')));
+              return;
+            }
+            Navigator.pop(dialogContext, parsed);
+          }, child: const Text('Set Timer')),
         ],
       ),
     );
@@ -518,8 +615,8 @@ class _SadhanaPageState extends State<SadhanaPage> {
           running = false;
           completed.insert(0, DateTime.now().toString().substring(0, 16) + ' • ' + minutes.toString() + ' min');
         });
-        SystemSound.play(SystemSoundType.alert);
         HapticFeedback.vibrate();
+        announceCompletion();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Sadhana completed. ॐ गुरवे नमः'), duration: Duration(seconds: 4)),
         );
@@ -535,33 +632,28 @@ class _SadhanaPageState extends State<SadhanaPage> {
   }
 
   String clock(int s) {
-    final h = s ~/ 3600;
-    final m = (s % 3600) ~/ 60;
-    final sec = s % 60;
-    if (h > 0) return h.toString().padLeft(2, '0') + ':' + m.toString().padLeft(2, '0') + ':' + sec.toString().padLeft(2, '0');
-    return m.toString().padLeft(2, '0') + ':' + sec.toString().padLeft(2, '0');
+    final h = s ~/ 3600, m = (s % 3600) ~/ 60, sec = s % 60;
+    if (h > 0) return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}';
+    return '${m.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}';
   }
 
   String durationLabel(int m) => m < 60 ? '$m min' : (m % 60 == 0 ? '${m ~/ 60} hr' : '${m ~/ 60} hr ${m % 60} min');
 
   @override
-  void dispose() { timer?.cancel(); super.dispose(); }
+  void dispose() { timer?.cancel(); tts.stop(); super.dispose(); }
 
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('Sadhana Timer')),
     body: ListView(padding: const EdgeInsets.all(20), children: [
-      Container(
-        padding: const EdgeInsets.all(24),
+      Container(padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(color: cardWhite, borderRadius: BorderRadius.circular(24), border: Border.all(color: paleGold)),
         child: Column(children: [
           const Text('ॐ गुरवे नमः', style: TextStyle(color: maroon, fontSize: 22, fontWeight: FontWeight.w600)),
           const SizedBox(height: 22),
           SizedBox(width: 210, height: 210, child: Stack(fit: StackFit.expand, children: [
-            CircularProgressIndicator(
-              value: minutes == 0 ? 0 : remaining / (minutes * 60),
-              strokeWidth: 9, backgroundColor: ivory, color: champagne,
-            ),
+            CircularProgressIndicator(value: minutes == 0 ? 0 : remaining / (minutes * 60),
+              strokeWidth: 9, backgroundColor: ivory, color: champagne),
             Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
               Text(clock(remaining), style: const TextStyle(fontSize: 39, fontWeight: FontWeight.bold, color: maroon)),
               const Text('TIME REMAINING', style: TextStyle(fontSize: 10, letterSpacing: 1.2, color: brown)),
@@ -571,27 +663,19 @@ class _SadhanaPageState extends State<SadhanaPage> {
           const Align(alignment: Alignment.centerLeft, child: Text('Choose duration', style: TextStyle(fontWeight: FontWeight.w600, color: brown))),
           const SizedBox(height: 10),
           Wrap(spacing: 8, runSpacing: 8, children: [
-            ...[15, 30, 60, 120].map((m) => ChoiceChip(
-              label: Text(durationLabel(m)),
-              selected: minutes == m,
-              onSelected: running ? null : (_) => choose(m),
-              selectedColor: paleGold,
-            )),
-            ActionChip(
-              avatar: const Icon(Icons.edit, size: 17, color: maroon),
-              label: Text(minutes == 15 || minutes == 30 || minutes == 60 || minutes == 120 ? 'Custom' : durationLabel(minutes)),
-              backgroundColor: (minutes == 15 || minutes == 30 || minutes == 60 || minutes == 120) ? ivory : paleGold,
-              onPressed: running ? null : chooseCustomDuration,
-            ),
+            ...[15, 30, 60, 120].map((m) => ChoiceChip(label: Text(durationLabel(m)), selected: minutes == m,
+              onSelected: running ? null : (_) => choose(m), selectedColor: paleGold)),
+            ActionChip(avatar: const Icon(Icons.edit, size: 17, color: maroon),
+              label: Text([15,30,60,120].contains(minutes) ? 'Custom' : durationLabel(minutes)),
+              backgroundColor: [15,30,60,120].contains(minutes) ? ivory : paleGold,
+              onPressed: running ? null : chooseCustomDuration),
           ]),
           const SizedBox(height: 20),
           Row(children: [
-            Expanded(child: FilledButton.icon(
-              onPressed: startOrPause,
+            Expanded(child: FilledButton.icon(onPressed: startOrPause,
               icon: Icon(running ? Icons.pause : Icons.play_arrow),
               label: Text(running ? 'Pause' : remaining == minutes * 60 ? 'Start' : 'Resume'),
-              style: FilledButton.styleFrom(backgroundColor: maroon),
-            )),
+              style: FilledButton.styleFrom(backgroundColor: maroon))),
             const SizedBox(width: 10),
             OutlinedButton.icon(onPressed: reset, icon: const Icon(Icons.stop), label: const Text('Reset')),
           ]),
@@ -601,8 +685,7 @@ class _SadhanaPageState extends State<SadhanaPage> {
       const Text('Completed sessions', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: brown)),
       if (completed.isEmpty)
         const Padding(padding: EdgeInsets.only(top: 8), child: Text('Completed sessions will appear here during this app session.', style: TextStyle(color: brown)))
-      else
-        ...completed.map((s) => ListTile(leading: const Icon(Icons.check_circle_outline, color: champagne), title: Text(s))),
+      else ...completed.map((s) => ListTile(leading: const Icon(Icons.check_circle_outline, color: champagne), title: Text(s))),
     ]),
   );
 }
