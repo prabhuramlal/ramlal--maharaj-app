@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -62,6 +63,8 @@ class RamlalMaharajApp extends StatelessWidget {
     debugShowCheckedModeBanner: false,
     title: 'Yog Yogeshwar Mahaprabhu',
     theme: ThemeData(useMaterial3: true, scaffoldBackgroundColor: ivory,
+      textTheme: GoogleFonts.notoSansDevanagariTextTheme(),
+      primaryTextTheme: GoogleFonts.notoSansDevanagariTextTheme(),
       colorScheme: ColorScheme.fromSeed(seedColor: champagne, primary: maroon, surface: ivory),
       appBarTheme: const AppBarTheme(backgroundColor: ivory, foregroundColor: brown, elevation: 0)),
     home: const WelcomeGate());
@@ -156,8 +159,8 @@ class HomePage extends StatelessWidget {
           child: ClipOval(child: Image.asset('assets/images/gurudev_logo_png.jpeg', fit: BoxFit.cover))),
         const SizedBox(width: 12),
         const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Yog Yogeshwar', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: maroon)),
-          Text('Mahaprabhu Shree Ramlal Ji Maharaj', style: TextStyle(fontSize: 11, color: brown)),
+          Text('योग योगेश्वर', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: maroon)),
+          Text('महाप्रभु श्री रामलाल जी महाराज', style: TextStyle(fontSize: 13, color: brown)),
         ])),
         IconButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ContentPage(category: 'Notifications', title: 'Announcements'))),
           icon: const Icon(Icons.notifications_none_rounded, color: brown)),
@@ -177,7 +180,7 @@ class HomePage extends StatelessWidget {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: const [
         Text('जय गुरुदेव 🙏', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: maroon)),
         SizedBox(height: 4), Text('A place for devotion, wisdom and inner peace', style: TextStyle(color: brown, fontSize: 13)),
-        SizedBox(height: 20), Text('Explore', style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold, color: brown)),
+        SizedBox(height: 20), Text('दर्शन एवं भक्ति • Explore', style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold, color: brown)),
       ]))),
     SliverPadding(padding: const EdgeInsets.symmetric(horizontal: 16), sliver: SliverGrid(
       delegate: SliverChildBuilderDelegate((context, i) {
@@ -1280,36 +1283,91 @@ class ProfilePage extends StatefulWidget {
   State<ProfilePage> createState() => _ProfilePageState();
 }
 class _ProfilePageState extends State<ProfilePage> {
+  bool deleting = false;
+
+  Future<void> deleteAccount() async {
+    final client = Supabase.instance.client;
+    final user = client.auth.currentUser;
+    if (user == null || user.email == null) return;
+    final passwordController = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('खाता स्थायी रूप से हटाएँ?'),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          const Text('यह कार्रवाई वापस नहीं की जा सकती। पुष्टि के लिए अपना वर्तमान पासवर्ड दर्ज करें।\n\nThis permanently deletes your sign-in account.'),
+          const SizedBox(height: 14),
+          TextField(controller: passwordController, obscureText: true, autofocus: true,
+            decoration: const InputDecoration(labelText: 'Current password / वर्तमान पासवर्ड', prefixIcon: Icon(Icons.lock_outline))),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel / रद्द करें')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
+            onPressed: () => Navigator.pop(dialogContext, passwordController.text.isNotEmpty),
+            child: const Text('Delete account / हटाएँ'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) { passwordController.dispose(); return; }
+    setState(() => deleting = true);
+    try {
+      final check = await client.auth.signInWithPassword(email: user.email!, password: passwordController.text);
+      if (check.user?.id != user.id) throw Exception('Account confirmation failed. Please sign in again.');
+      final response = await client.functions.invoke('delete-account');
+      if (response.status < 200 || response.status >= 300) {
+        throw Exception((response.data is Map ? response.data['error'] : null)?.toString() ?? 'Account deletion service is unavailable.');
+      }
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('favourite_content');
+      await prefs.remove('favourite_content_ids');
+      await client.auth.signOut();
+      if (!mounted) return;
+      Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const WelcomeGate()), (route) => false);
+    } on AuthException catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Password verification failed: ${e.message}')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Account deletion failed: ${e.toString().replaceFirst('Exception: ', '')}')));
+    } finally {
+      passwordController.dispose();
+      if (mounted) setState(() => deleting = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final client = Supabase.instance.isInitialized ? Supabase.instance.client : null;
     final user = client?.auth.currentUser;
     final role = user?.appMetadata['role']?.toString();
     final isAdmin = role == 'admin' || role == 'super_admin';
-    return Scaffold(appBar: AppBar(title: const Text('Profile')),
+    return Scaffold(appBar: AppBar(title: const Text('Profile • प्रोफ़ाइल')),
       body: ListView(padding: const EdgeInsets.all(20), children: [
         Container(padding: const EdgeInsets.all(22), decoration: BoxDecoration(color: cardWhite, borderRadius: BorderRadius.circular(20), border: Border.all(color: paleGold)),
           child: Column(children: [
             const CircleAvatar(radius: 38, backgroundColor: ivory, child: Icon(Icons.person, size: 42, color: maroon)),
             const SizedBox(height: 12),
-            Text(user?.email ?? 'Welcome, Devotee', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: maroon)),
+            Text(user?.email ?? 'Welcome, Devotee • भक्त का स्वागत है', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: maroon)),
             const SizedBox(height: 5),
-            Text(user == null ? 'Guest access' : (isAdmin ? (role == 'super_admin' ? 'Super Administrator' : 'Administrator') : 'Devotee account'), style: const TextStyle(color: brown)),
+            Text(user == null ? 'अतिथि प्रवेश • Guest access' : (isAdmin ? (role == 'super_admin' ? 'सुपर एडमिन • Super Administrator' : 'एडमिन • Administrator') : 'भक्त खाता • Devotee account'), style: const TextStyle(color: brown)),
             const SizedBox(height: 5), const Text('ॐ गुरवे नमः', style: TextStyle(color: brown)),
           ])),
         const SizedBox(height: 18),
         if (user == null)
-          ProfileTile(icon: Icons.login, title: 'Devotee Login / Sign Up', subtitle: 'Sign in or create a free account', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DevoteeAuthPage()))),
+          ProfileTile(icon: Icons.login, title: 'भक्त लॉगिन / Devotee Login', subtitle: 'Sign in or create a free account', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DevoteeAuthPage()))),
         if (user != null)
-          ProfileTile(icon: Icons.logout, title: 'Sign Out', subtitle: 'Sign out of this account', onTap: () async {
+          ProfileTile(icon: Icons.logout, title: 'साइन आउट • Sign Out', subtitle: 'Sign out of this account', onTap: () async {
             await client!.auth.signOut();
             if (mounted) setState(() {});
           }),
-        ProfileTile(icon: Icons.favorite_outline, title: 'Favourites', subtitle: 'Your saved devotional items', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FavouritesPage()))),
-        const ProfileTile(icon: Icons.info_outline, title: 'About the App', subtitle: 'Yog Yogeshwar Mahaprabhu Shree Ramlal Ji Maharaj'),
-        const ProfileTile(icon: Icons.privacy_tip_outlined, title: 'Privacy', subtitle: 'Your practice is personal and private'),
+        if (user != null)
+          ProfileTile(icon: Icons.delete_forever_outlined, title: 'खाता हटाएँ • Delete Account', subtitle: deleting ? 'Please wait…' : 'Permanently delete your account', onTap: deleting ? null : deleteAccount),
+        ProfileTile(icon: Icons.favorite_outline, title: 'पसंदीदा • Favourites', subtitle: 'Your saved devotional items', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FavouritesPage()))),
+        const ProfileTile(icon: Icons.info_outline, title: 'ऐप के बारे में • About the App', subtitle: 'Yog Yogeshwar Mahaprabhu Shree Ramlal Ji Maharaj'),
+        const ProfileTile(icon: Icons.privacy_tip_outlined, title: 'गोपनीयता • Privacy', subtitle: 'Your practice is personal and private'),
         if (isAdmin)
-          ProfileTile(icon: Icons.admin_panel_settings_outlined, title: 'Open Admin Portal', subtitle: 'Manage devotional content and events', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminDashboardPage()))),
+          ProfileTile(icon: Icons.admin_panel_settings_outlined, title: 'एडमिन पोर्टल • Admin Portal', subtitle: 'Manage devotional content and events', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminDashboardPage()))),
         if (user == null)
           ProfileTile(icon: Icons.admin_panel_settings_outlined, title: 'Admin Login', subtitle: 'For authorised content administrators', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminLoginPage()))),
       ]));
