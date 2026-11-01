@@ -511,8 +511,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     const SizedBox(height: 12),
     TextField(controller: description, maxLines: 3, decoration: const InputDecoration(labelText: 'Description (optional)')),
     const SizedBox(height: 18),
-    FilledButton.icon(onPressed: busy ? null : upload, icon: const Icon(Icons.cloud_upload), label: Text(busy ? 'Uploading...' : 'Choose file & publish'), style: FilledButton.styleFrom(backgroundColor: maroon)),
-  ]);
+    FilledButton.icon(onPressed: busy ? null : upload, icon: const Icon(Icons.cloud_upload), label: Text(busy ? 'Uploading...' : 'Choose file & publish'), style: FilledButton.styleFrom(backgroundColor: maroon)),  ]);
 
   Widget manageTab() => FutureBuilder<List<Map<String, dynamic>>>(future: loadManagedContent(), builder: (context, snapshot) {
     if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: champagne));
@@ -528,7 +527,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
           leading: Icon(photo ? Icons.image : Icons.perm_media, color: champagne),
           title: Text(photo ? 'Photo' : (item['title'] ?? 'Untitled').toString()),
           subtitle: Text((item['category'] ?? 'Media').toString() + (created.isEmpty ? '' : ' • ' + created.split('T').first)),
-          trailing: Wrap(mainAxisSize: MainAxisSize.min, spacing: 0, children: [
+          trailing: Wrap( spacing: 0, children: [
             IconButton(tooltip: 'Preview', icon: const Icon(Icons.visibility_outlined, color: maroon), onPressed: () => previewContent(item)),
             IconButton(tooltip: 'Remove media', icon: const Icon(Icons.delete_outline, color: Colors.red), onPressed: busy ? null : () => removeContent(item)),
           ]),
@@ -648,7 +647,7 @@ class _EventsAdminPageState extends State<EventsAdminPage> {
             leading: const Icon(Icons.event, color: champagne),
             title: Text((e['title'] ?? '').toString(), style: const TextStyle(color: brown)),
             subtitle: Text('${e['event_date'] ?? ''} • ${e['published'] == true ? 'Published' : 'Draft'}'),
-            trailing: Wrap(mainAxisSize: MainAxisSize.min, children: [
+            trailing: Wrap( children: [
               IconButton(tooltip: 'Edit event', icon: const Icon(Icons.edit_outlined, color: maroon), onPressed: () => editEvent(e)),
               IconButton(tooltip: 'Delete event', icon: const Icon(Icons.delete_outline, color: Colors.red), onPressed: () => deleteEvent(e)),
             ]),
@@ -700,15 +699,15 @@ class _FavouritesPageState extends State<FavouritesPage> {
             onTap: () => gallery ? openGalleryImage(context, item) : openItem(context, item),
             trailing: IconButton(tooltip: 'Remove from favourites', icon: const Icon(Icons.favorite, color: maroon), onPressed: () => remove(item)),
           ));
-        }));
-  }
+        });
+    }),
+  );
 }
 
 class EventsPage extends StatelessWidget {
   const EventsPage({super.key});
   Future<List<Map<String, dynamic>>> load() async {
-    if (!Supabase.instance.isInitialized) return [];
-    final data = await Supabase.instance.client.from('devotional_events').select().eq('published', true).order('event_date');
+    if (!Supabase.instance.isInitialized) return [];    final data = await Supabase.instance.client.from('devotional_events').select().eq('published', true).order('event_date');
     return List<Map<String, dynamic>>.from(data);
   }
   @override
