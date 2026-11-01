@@ -296,7 +296,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
         }),
         IconButton(iconSize: 38, onPressed: () => player.seek(player.duration ?? Duration.zero), icon: const Icon(Icons.forward_10, color: brown)),
       ]),
-    ])))));
+    ]))));
 }
 
 class PdfReaderPage extends StatelessWidget {
@@ -304,7 +304,7 @@ class PdfReaderPage extends StatelessWidget {
   const PdfReaderPage({super.key, required this.url, required this.title});
   @override
   Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: Text(title)),
-    body: PdfViewer.uri(Uri.parse(url), params: const PdfViewerParams(enableTextSelection: true)));
+    body: PdfViewer.uri(Uri.parse(url)));
 }
 
 class AdminLoginPage extends StatefulWidget {
