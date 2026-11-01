@@ -700,8 +700,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
 
       IconButton(tooltip: 'Sign out', onPressed: () async { await Supabase.instance.client.auth.signOut(); if (context.mounted) Navigator.pop(context); }, icon: const Icon(Icons.logout)),
     ], bottom: TabBar(isScrollable: true, tabs: tabs)),
-    body: TabBarView(children: pages),
-  ));
+    body: TabBarView(children: pages),  ));
   }
 }
 
@@ -1304,7 +1303,7 @@ class _ProfilePageState extends State<ProfilePage> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel / रद्द करें')),
           FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () => Navigator.pop(dialogContext, passwordController.text.isNotEmpty),
             child: const Text('Delete account / हटाएँ'),
           ),
@@ -1323,6 +1322,7 @@ class _ProfilePageState extends State<ProfilePage> {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('favourite_content');
       await prefs.remove('favourite_content_ids');
+      await prefs.remove('sadhana_completed_sessions');
       await client.auth.signOut();
       if (!mounted) return;
       Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const WelcomeGate()), (route) => false);
