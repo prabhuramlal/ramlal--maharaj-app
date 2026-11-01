@@ -11,6 +11,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:pdfrx/pdfrx.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:video_player/video_player.dart';
 import 'firebase_options.dart';
 
 const ivory = Color(0xFFF8F3E8);
@@ -333,10 +334,70 @@ Future<void> openItem(BuildContext context, Map<String, dynamic> item) async {
     Navigator.push(context, MaterialPageRoute(builder: (_) => AudioPlayerPage(url: link, title: title)));
     return;
   }
+  final isVideo = category == 'video' || RegExp(r'\\.(mp4|m4v|mov|webm)(\\?|$)', caseSensitive: false).hasMatch(link);
+  if (isVideo) {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => InAppVideoPage(url: link, title: title)));
+    return;
+  }
   final uri = Uri.tryParse(link);
   if (uri == null || !await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Video link could not be opened.')));
+    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('This content link could not be opened.')));
   }
+}
+
+class InAppVideoPage extends StatefulWidget {
+  final String url, title;
+  const InAppVideoPage({super.key, required this.url, required this.title});
+  @override
+  State<InAppVideoPage> createState() => _InAppVideoPageState();
+}
+
+class _InAppVideoPageState extends State<InAppVideoPage> {
+  late final VideoPlayerController _controller;
+  String? _error;
+  bool _ready = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = VideoPlayerController.networkUrl(Uri.parse(widget.url))
+      ..initialize().then((_) {
+        if (mounted) setState(() => _ready = true);
+      }).catchError((Object error) {
+        if (mounted) setState(() => _error = 'Unable to load this video. Check the link or internet connection.');
+      });
+  }
+
+  String _time(Duration value) {
+    final minutes = value.inMinutes;
+    final seconds = value.inSeconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: Text(widget.title)),
+    body: Center(child: _error != null
+      ? Padding(padding: const EdgeInsets.all(24), child: Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: maroon)))
+      : !_ready
+        ? const CircularProgressIndicator(color: champagne)
+        : Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+            AspectRatio(aspectRatio: _controller.value.aspectRatio, child: VideoPlayer(_controller)),
+            VideoProgressIndicator(_controller, allowScrubbing: true, padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16), colors: const VideoProgressColors(playedColor: champagne, bufferedColor: paleGold, backgroundColor: ivory)),
+            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              IconButton(onPressed: () => _controller.seekTo(_controller.value.position - const Duration(seconds: 10)), icon: const Icon(Icons.replay_10, color: brown), iconSize: 36),
+              IconButton(onPressed: () => setState(() { _controller.value.isPlaying ? _controller.pause() : _controller.play(); }), icon: Icon(_controller.value.isPlaying ? Icons.pause_circle : Icons.play_circle, color: maroon), iconSize: 58),
+              IconButton(onPressed: () => _controller.seekTo(_controller.value.position + const Duration(seconds: 10)), icon: const Icon(Icons.forward_10, color: brown), iconSize: 36),
+            ]),
+            Text('${_time(_controller.value.position)} / ${_time(_controller.value.duration)}', style: const TextStyle(color: brown)),
+          ])),
+  );
 }
 
 class AudioPlayerPage extends StatefulWidget {
@@ -511,6 +572,10 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     if (category == 'bhajan' || category == 'aarti' || category == 'audio' || category == 'sadhana music' ||
         RegExp(r'\.(mp3|m4a|aac|wav|ogg)(\?|$)', caseSensitive: false).hasMatch(url)) {
       Navigator.push(context, MaterialPageRoute(builder: (_) => AudioPlayerPage(url: url, title: (item['title'] ?? 'Audio Preview').toString())));
+      return;
+    }
+    if (RegExp(r'\\.(mp4|m4v|mov|webm)(\\?|$)', caseSensitive: false).hasMatch(url) || category == 'video') {
+      Navigator.push(context, MaterialPageRoute(builder: (_) => InAppVideoPage(url: url, title: (item['title'] ?? 'Video Preview').toString())));
       return;
     }
     final uri = Uri.tryParse(url);
@@ -797,6 +862,8 @@ class _SadhanaPageState extends State<SadhanaPage> {
   bool running = false, musicPlaying = false;
   String? completionMusicUrl;
   final completed = <String>[];
+  DateTime? _endsAt;
+  static const _deadlineKey = 'sadhana_timer_deadline';
 
   Future<void> _loadCompletedSessions() async {
     final prefs = await SharedPreferences.getInstance();
@@ -814,6 +881,53 @@ class _SadhanaPageState extends State<SadhanaPage> {
     super.initState();
     _loadCompletedSessions();
     loadCompletionMusic();
+    _restoreTimer();
+  }
+
+  Future<void> _restoreTimer() async {
+    final prefs = await SharedPreferences.getInstance();
+    final savedDeadline = prefs.getInt(_deadlineKey);
+    if (savedDeadline == null) return;
+    final deadline = DateTime.fromMillisecondsSinceEpoch(savedDeadline);
+    final seconds = deadline.difference(DateTime.now()).inSeconds;
+    if (seconds <= 0) {
+      await prefs.remove(_deadlineKey);
+      if (!mounted) return;
+      setState(() {
+        remaining = 0; running = false; _endsAt = null;
+        completed.insert(0, DateTime.now().toString().substring(0, 16) + ' • ' + minutes.toString() + ' min');
+      });
+      await _saveCompletedSessions();
+      HapticFeedback.vibrate();
+      await playCompletionMusic();
+      return;
+    }
+    if (!mounted) return;
+    setState(() { _endsAt = deadline; remaining = seconds; running = true; });
+    _tickFromDeadline();
+  }
+
+  void _tickFromDeadline() {
+    timer?.cancel();
+    timer = Timer.periodic(const Duration(seconds: 1), (t) async {
+      if (!mounted || _endsAt == null) return;
+      final seconds = _endsAt!.difference(DateTime.now()).inSeconds;
+      if (seconds <= 0) {
+        t.cancel();
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove(_deadlineKey);
+        if (!mounted) return;
+        setState(() {
+          remaining = 0; running = false; _endsAt = null;
+          completed.insert(0, DateTime.now().toString().substring(0, 16) + ' • ' + minutes.toString() + ' min');
+        });
+        HapticFeedback.vibrate();
+        await _saveCompletedSessions();
+        playCompletionMusic();
+      } else {
+        setState(() => remaining = seconds);
+      }
+    });
   }
 
   Future<void> loadCompletionMusic() async {
@@ -856,6 +970,8 @@ class _SadhanaPageState extends State<SadhanaPage> {
 
   void choose(int m) {
     timer?.cancel();
+    _endsAt = null;
+    SharedPreferences.getInstance().then((p) => p.remove(_deadlineKey));
     setState(() { minutes = m; remaining = m * 60; running = false; });
   }
 
@@ -900,32 +1016,22 @@ class _SadhanaPageState extends State<SadhanaPage> {
   void startOrPause() {
     if (running) {
       timer?.cancel();
+      _endsAt = null;
+      SharedPreferences.getInstance().then((p) => p.remove(_deadlineKey));
       setState(() => running = false);
       return;
     }
     if (remaining <= 0) remaining = minutes * 60;
+    _endsAt = DateTime.now().add(Duration(seconds: remaining));
+    SharedPreferences.getInstance().then((p) => p.setInt(_deadlineKey!, _endsAt!.millisecondsSinceEpoch));
     setState(() => running = true);
-    timer?.cancel();
-    timer = Timer.periodic(const Duration(seconds: 1), (t) {
-      if (!mounted) return;
-      if (remaining <= 1) {
-        t.cancel();
-        setState(() {
-          remaining = 0;
-          running = false;
-          completed.insert(0, DateTime.now().toString().substring(0, 16) + ' • ' + minutes.toString() + ' min');
-        });
-        HapticFeedback.vibrate();
-        _saveCompletedSessions();
-        playCompletionMusic();
-      } else {
-        setState(() => remaining--);
-      }
-    });
+    _tickFromDeadline();
   }
 
   void reset() {
     timer?.cancel();
+    _endsAt = null;
+    SharedPreferences.getInstance().then((p) => p.remove(_deadlineKey));
     stopCompletionMusic();
     setState(() { running = false; remaining = minutes * 60; });
   }
@@ -987,6 +1093,13 @@ class _SadhanaPageState extends State<SadhanaPage> {
               onPressed: stopCompletionMusic,
               icon: const Icon(Icons.music_off),
               label: const Text('Stop Music'),
+            )),
+          ] else if (remaining == 0) ...[
+            const SizedBox(height: 12),
+            SizedBox(width: double.infinity, child: OutlinedButton.icon(
+              onPressed: playCompletionMusic,
+              icon: const Icon(Icons.replay),
+              label: const Text('Play Completion Music Again'),
             )),
           ],
           Row(children: [
@@ -1065,39 +1178,6 @@ class _DevoteeAuthPageState extends State<DevoteeAuthPage> {
   bool creating = false, busy = false, obscure = true;
   String? message, error;
 
-  Future<void> signInWithGoogle() async {
-    if (!Supabase.instance.isInitialized) {
-      setState(() => error = 'Account service is not configured yet.');
-      return;
-    }
-    setState(() { busy = true; error = null; message = null; });
-    try {
-      final google = GoogleSignIn.instance;
-      await google.initialize(
-        serverClientId: '735985536071-n2bvs0k7g3pvv2skln78r6spmpf9nb6k.apps.googleusercontent.com',
-      );
-      final account = await google.authenticate();
-      final idToken = account.authentication.idToken;
-      if (idToken == null || idToken.isEmpty) {
-        throw const AuthException('Google did not return an ID token. Check Google sign-in configuration.');
-      }
-      await Supabase.instance.client.auth.signInWithIdToken(
-        provider: OAuthProvider.google,
-        idToken: idToken,
-      );
-      if (mounted) {
-        Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const MainScreen()), (route) => false);
-      }
-    } on AuthException catch (e) {
-      if (mounted) setState(() => error = e.message);
-    } catch (e) {
-      // Surface the actual platform/Supabase error so configuration failures can be diagnosed.
-      if (mounted) setState(() => error = 'Google sign-in failed: ${e.toString()}');
-    } finally {
-      if (mounted) setState(() => busy = false);
-    }
-  }
-
   Future<void> submit() async {
     if (!Supabase.instance.isInitialized) {
       setState(() => error = 'Account service is not configured yet.');
@@ -1153,12 +1233,6 @@ class _DevoteeAuthPageState extends State<DevoteeAuthPage> {
       const SizedBox(height: 12),
       const Text('Your devotional journey', textAlign: TextAlign.center, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: maroon)),
       const SizedBox(height: 22),
-      SizedBox(width: double.infinity, height: 54, child: OutlinedButton.icon(
-        onPressed: busy ? null : signInWithGoogle,
-        icon: const Icon(Icons.g_mobiledata_rounded, size: 30),
-        label: const Text('Continue with Google', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-        style: OutlinedButton.styleFrom(foregroundColor: brown, side: const BorderSide(color: paleGold),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))))),
       const SizedBox(height: 18),
       const Row(children: [
         Expanded(child: Divider(color: paleGold)),

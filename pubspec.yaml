@@ -41,7 +41,7 @@ dependencies:
   file_picker: ^10.3.7
   pdfrx: ^2.2.24
   flutter_tts: ^4.2.3
-  google_sign_in: ^7.2.0
+  video_player: ^2.10.0
 
 
   # The following adds the Cupertino Icons font to your application.
