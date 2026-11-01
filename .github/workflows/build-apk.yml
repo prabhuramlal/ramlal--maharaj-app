@@ -33,6 +33,14 @@ jobs:
       - name: Format Dart source
         run: dart format lib
 
+      - name: Verify Supabase build configuration
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          test -n "$SUPABASE_URL" || (echo "Missing SUPABASE_URL Actions secret" && exit 1)
+          test -n "$SUPABASE_PUBLISHABLE_KEY" || (echo "Missing SUPABASE_PUBLISHABLE_KEY Actions secret" && exit 1)
+
       - name: Build Android APK
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
