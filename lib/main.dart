@@ -1092,7 +1092,7 @@ class _SadhanaPageState extends State<SadhanaPage> {
       await completionPlayer!.setAsset('assets/sounds/temple_bell.wav');
       await completionPlayer!.setVolume(1.0);
       if (mounted) setState(() => musicPlaying = true);
-      await completionPlayer!.play();
+      unawaited(completionPlayer!.play());
       await Future<void>.delayed(const Duration(seconds: 5));
       await completionPlayer!.stop();
     } catch (_) {
