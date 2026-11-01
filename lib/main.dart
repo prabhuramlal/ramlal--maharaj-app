@@ -159,8 +159,8 @@ class HomePage extends StatelessWidget {
           child: ClipOval(child: Image.asset('assets/images/gurudev_logo_png.jpeg', fit: BoxFit.cover))),
         const SizedBox(width: 12),
         const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('योग योगेश्वर', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: maroon)),
-          Text('महाप्रभु श्री रामलाल जी महाराज', style: TextStyle(fontSize: 13, color: brown)),
+          Text('Yog Yogeshwar', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: maroon)),
+          Text('Mahaprabhu Shree Ramlal Ji Maharaj', style: TextStyle(fontSize: 11, color: brown)),
         ])),
         IconButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ContentPage(category: 'Notifications', title: 'Announcements'))),
           icon: const Icon(Icons.notifications_none_rounded, color: brown)),
@@ -700,7 +700,8 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
 
       IconButton(tooltip: 'Sign out', onPressed: () async { await Supabase.instance.client.auth.signOut(); if (context.mounted) Navigator.pop(context); }, icon: const Icon(Icons.logout)),
     ], bottom: TabBar(isScrollable: true, tabs: tabs)),
-    body: TabBarView(children: pages),  ));
+    body: TabBarView(children: pages),
+  ));
   }
 }
 
@@ -1295,7 +1296,7 @@ class _ProfilePageState extends State<ProfilePage> {
       builder: (dialogContext) => AlertDialog(
         title: const Text('खाता स्थायी रूप से हटाएँ?'),
         content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('यह कार्रवाई वापस नहीं की जा सकती। पुष्टि के लिए अपना वर्तमान पासवर्ड दर्ज करें।\n\nThis permanently deletes your sign-in account.'),
+          const Text('यह कार्रवाई वापस नहीं की जा सकती। पुष्टि के लिए अपना वर्तमान पासवर्ड दर्ज करें.\n\nThis permanently deletes your sign-in account.'),
           const SizedBox(height: 14),
           TextField(controller: passwordController, obscureText: true, autofocus: true,
             decoration: const InputDecoration(labelText: 'Current password / वर्तमान पासवर्ड', prefixIcon: Icon(Icons.lock_outline))),
@@ -1382,134 +1383,36 @@ class DevoteeAuthPage extends StatefulWidget {
 class _DevoteeAuthPageState extends State<DevoteeAuthPage> {
   final email = TextEditingController();
   final password = TextEditingController();
-  bool creating = false, busy = false, obscure = true, verificationPending = false;
-  int resendSeconds = 0;
-  Timer? resendTimer;
+  bool creating = false, busy = false, obscure = true;
   String? message, error;
 
-  void startResendCooldown([int seconds = 60]) {
-    resendTimer?.cancel();
-    if (!mounted) return;
-    setState(() => resendSeconds = seconds);
-    resendTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted) { timer.cancel(); return; }
-      if (resendSeconds <= 1) {
-        timer.cancel();
-        setState(() => resendSeconds = 0);
-      } else {
-        setState(() => resendSeconds--);
-      }
-    });
-  }
-
-  int retrySecondsFrom(String text) {
-    final match = RegExp(r'(?:after|in)\\s+(\\d+)\\s+seconds?', caseSensitive: false).firstMatch(text);
-    return match == null ? 60 : int.parse(match.group(1)!);
-  }
-
   Future<void> submit() async {
-    if (busy) return;
     if (!Supabase.instance.isInitialized) {
-      setState(() => error = 'Account service is not connected. Please try again later.');
+      setState(() => error = 'Account service is not configured yet.');
       return;
     }
-    final address = email.text.trim();
-    if (!RegExp(r'^[^\\s@]+@[^\\s@]+\\.[^\\s@]+
-
-class ProfileTile extends StatelessWidget {
-  final IconData icon; final String title, subtitle; final VoidCallback? onTap;
-  const ProfileTile({super.key, required this.icon, required this.title, required this.subtitle, this.onTap});
-  @override
-  Widget build(BuildContext context) => Card(color: cardWhite, elevation: 0, child: ListTile(leading: Icon(icon, color: champagne),
-    title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600, color: brown)), subtitle: Text(subtitle),
-    trailing: const Icon(Icons.chevron_right), onTap: onTap));
-}
-class EmptyState extends StatelessWidget {
-  final String message;
-  const EmptyState({super.key, required this.message});
-  @override
-  Widget build(BuildContext context) => Center(child: Padding(padding: const EdgeInsets.all(28),
-    child: Column(mainAxisSize: MainAxisSize.min, children: [
-      const Icon(Icons.menu_book_outlined, color: champagne, size: 48), const SizedBox(height: 14),
-      Text(message, textAlign: TextAlign.center, style: const TextStyle(color: brown, fontSize: 15)),
-    ])));
-}).hasMatch(address) || password.text.length < 6) {
-      setState(() => error = 'Enter a valid email address and a password with at least 6 characters.');
+    if (email.text.trim().isEmpty || password.text.length < 6) {
+      setState(() => error = 'Enter a valid email and a password with at least 6 characters.');
       return;
     }
     setState(() { busy = true; error = null; message = null; });
     try {
       final auth = Supabase.instance.client.auth;
       if (creating) {
-        final result = await auth.signUp(email: address, password: password.text);
+        final result = await auth.signUp(email: email.text.trim(), password: password.text);
         if (result.session == null) {
-          verificationPending = true;
-          startResendCooldown(60);
-          setState(() => message = 'Registration submitted. Check your inbox and Spam folder, then tap the verification link before signing in. You can request another email when the countdown ends.');
+          setState(() => message = 'Account created. Please verify your email, then sign in.');
         } else if (mounted) {
           Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const MainScreen()), (route) => false);
         }
       } else {
-        final result = await auth.signInWithPassword(email: address, password: password.text);
-        final role = result.user?.appMetadata['role']?.toString();
+        await auth.signInWithPassword(email: email.text.trim(), password: password.text);
         if (mounted) Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const MainScreen()), (route) => false);
-        if (role == 'admin' || role == 'super_admin') {
-          // Admin access is surfaced in the Profile page after authentication.
-        }
       }
     } on AuthException catch (e) {
-      if (!mounted) return;
-      final lower = e.message.toLowerCase();
-      if (lower.contains('rate limit') || lower.contains('too many') || lower.contains('after ') && lower.contains('second')) {
-        final seconds = retrySecondsFrom(e.message);
-        startResendCooldown(seconds);
-        setState(() => error = 'Email service limit reached. Please wait $seconds seconds before trying again. Do not keep pressing the button.');
-      } else if (lower.contains('already registered') || lower.contains('already exists') || lower.contains('user already')) {
-        setState(() {
-          verificationPending = creating;
-          error = creating
-            ? 'An account may already exist for this email. Try signing in. If it is not verified, use Resend verification email below.'
-            : e.message;
-        });
-      } else if (lower.contains('email not confirmed') || lower.contains('not confirmed')) {
-        setState(() {
-          verificationPending = true;
-          error = 'Please verify your email using the link sent to your inbox before signing in.';
-        });
-      } else {
-        setState(() => error = e.message);
-      }
+      if (mounted) setState(() => error = e.message);
     } catch (_) {
-      if (mounted) setState(() => error = 'Unable to complete the request. Check your internet connection and try again.');
-    } finally {
-      if (mounted) setState(() => busy = false);
-    }
-  }
-
-  Future<void> resendVerification() async {
-    if (busy || resendSeconds > 0) return;
-    if (!Supabase.instance.isInitialized || email.text.trim().isEmpty) {
-      setState(() => error = 'Enter the email address used to register.');
-      return;
-    }
-    setState(() { busy = true; error = null; message = null; });
-    try {
-      await Supabase.instance.client.auth.resend(type: OtpType.signup, email: email.text.trim());
-      startResendCooldown(60);
-      setState(() {
-        verificationPending = true;
-        message = 'Verification email requested. Check your inbox and Spam folder. Wait for the countdown before requesting another email.';
-      });
-    } on AuthException catch (e) {
-      final seconds = retrySecondsFrom(e.message);
-      if (e.message.toLowerCase().contains('rate limit') || e.message.toLowerCase().contains('too many')) {
-        startResendCooldown(seconds);
-        setState(() => error = 'Please wait $seconds seconds before requesting another verification email.');
-      } else {
-        setState(() => error = e.message);
-      }
-    } catch (_) {
-      if (mounted) setState(() => error = 'Could not resend the verification email. Please try again later.');
+      if (mounted) setState(() => error = 'Unable to complete sign-in. Please try again.');
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -1520,20 +1423,16 @@ class EmptyState extends StatelessWidget {
       setState(() => error = 'Enter your email address first.');
       return;
     }
-    if (busy) return;
-    setState(() { busy = true; error = null; message = null; });
     try {
       await Supabase.instance.client.auth.resetPasswordForEmail(email.text.trim());
-      if (mounted) setState(() => message = 'Password reset email requested. Check your inbox and Spam folder.');
+      if (mounted) setState(() => message = 'Password reset email requested. Check your inbox.');
     } on AuthException catch (e) {
       if (mounted) setState(() => error = e.message);
-    } finally {
-      if (mounted) setState(() => busy = false);
     }
   }
 
   @override
-  void dispose() { resendTimer?.cancel(); email.dispose(); password.dispose(); super.dispose(); }
+  void dispose() { email.dispose(); password.dispose(); super.dispose(); }
 
   @override
   Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: Text(creating ? 'Create Devotee Account' : 'Devotee Login')),
@@ -1554,17 +1453,10 @@ class EmptyState extends StatelessWidget {
       TextField(controller: password, obscureText: obscure, decoration: InputDecoration(labelText: 'Password (minimum 6 characters)', prefixIcon: const Icon(Icons.lock_outline), suffixIcon: IconButton(onPressed: () => setState(() => obscure = !obscure), icon: Icon(obscure ? Icons.visibility : Icons.visibility_off)))),
       if (error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(error!, style: const TextStyle(color: Colors.red))),
       if (message != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(message!, style: const TextStyle(color: brown))),
-      if (verificationPending || creating) ...[
-        const SizedBox(height: 8),
-        TextButton(
-          onPressed: busy || resendSeconds > 0 ? null : resendVerification,
-          child: Text(resendSeconds > 0 ? 'Resend verification email in $resendSeconds sec' : 'Resend verification email'),
-        ),
-      ],
       const SizedBox(height: 18),
       FilledButton(onPressed: busy ? null : submit, style: FilledButton.styleFrom(backgroundColor: maroon), child: Text(busy ? 'Please wait...' : (creating ? 'Create Free Account' : 'Sign In'))),
       if (!creating) TextButton(onPressed: busy ? null : resetPassword, child: const Text('Forgot password?')),
-      TextButton(onPressed: busy ? null : () => setState(() { creating = !creating; error = null; message = null; verificationPending = false; }), child: Text(creating ? 'Already have an account? Sign in' : 'New here? Create a free account')),
+      TextButton(onPressed: busy ? null : () => setState(() { creating = !creating; error = null; message = null; }), child: Text(creating ? 'Already have an account? Sign in' : 'New here? Create a free account')),
       const SizedBox(height: 8),
       const Text('You can continue using the app as a guest without creating an account. Phone/SMS OTP sign-in is not used.', textAlign: TextAlign.center, style: TextStyle(color: brown, fontSize: 12)),
     ]));
