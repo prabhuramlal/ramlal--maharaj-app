@@ -362,7 +362,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
   bool busy = false;
   final title = TextEditingController(), description = TextEditingController();
   String category = 'Bhajan';
-  final categories = const ['Bhajan','Aarti','Books','Guru Vani','Pravachan','Satsang','Gallery','Notifications'];
+  final categories = const ['Bhajan','Aarti','Books','Guru Vani','Pravachan','Satsang','Gallery','Sadhana Music','Notifications'];
 
   Future<void> upload() async {
     final client = Supabase.instance.client;
@@ -400,6 +400,40 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     final rows = await Supabase.instance.client.from('devotional_content').select('id,title,category,file_url,created_at,published').order('created_at', ascending: false);
     return List<Map<String, dynamic>>.from(rows);
   }
+
+
+  Future<void> previewContent(Map<String, dynamic> item) async {
+    final category = (item['category'] ?? '').toString().toLowerCase();
+    final url = (item['file_url'] ?? '').toString();
+    if (url.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Preview is not available for this item.')));
+      return;
+    }
+    if (category == 'gallery' || _isImageUrl(url)) {
+      openGalleryImage(context, item);
+      return;
+    }
+    if (category == 'books' || url.toLowerCase().split('?').first.endsWith('.pdf')) {
+      Navigator.push(context, MaterialPageRoute(builder: (_) => PdfReaderPage(url: url, title: (item['title'] ?? 'PDF Preview').toString())));
+      return;
+    }
+    if (category == 'bhajan' || category == 'aarti' || category == 'audio' || category == 'sadhana music' ||
+        RegExp(r'\\.(mp3|m4a|aac|wav|ogg)(\\?|$)', caseSensitive: false).hasMatch(url)) {
+      Navigator.push(context, MaterialPageRoute(builder: (_) => AudioPlayerPage(url: url, title: (item['title'] ?? 'Audio Preview').toString())));
+      return;
+    }
+    final uri = Uri.tryParse(url);
+    if (uri != null && await launchUrl(uri, mode: LaunchMode.externalApplication)) return;
+    if (mounted) {
+      showDialog<void>(context: context, builder: (_) => AlertDialog(
+        title: const Text('File details'),
+        content: Text('Category: ${item['category'] ?? 'Other'}\\nFile URL: $url'),
+        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
+      ));
+    }
+  }
+
+  bool _isImageUrl(String url) => RegExp(r'\\.(png|jpe?g|webp|gif)(\\?|$)', caseSensitive: false).hasMatch(url);
 
   Future<void> removeContent(Map<String, dynamic> item) async {
     final id = item['id'];
@@ -457,11 +491,15 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       padding: const EdgeInsets.all(16), itemCount: rows.length, separatorBuilder: (_, __) => const SizedBox(height: 8),
       itemBuilder: (context, index) {
         final item = rows[index]; final photo = item['category'] == 'Gallery';
+        final created = (item['created_at'] ?? '').toString();
         return Card(color: cardWhite, child: ListTile(
           leading: Icon(photo ? Icons.image : Icons.perm_media, color: champagne),
           title: Text(photo ? 'Photo' : (item['title'] ?? 'Untitled').toString()),
-          subtitle: Text((item['category'] ?? 'Media').toString()),
-          trailing: IconButton(tooltip: 'Remove media', icon: const Icon(Icons.delete_outline, color: Colors.red), onPressed: busy ? null : () => removeContent(item)),
+          subtitle: Text((item['category'] ?? 'Media').toString() + (created.isEmpty ? '' : ' • ' + created.split('T').first)),
+          trailing: Wrap(mainAxisSize: MainAxisSize.min, spacing: 0, children: [
+            IconButton(tooltip: 'Preview', icon: const Icon(Icons.visibility_outlined, color: maroon), onPressed: () => previewContent(item)),
+            IconButton(tooltip: 'Remove media', icon: const Icon(Icons.delete_outline, color: Colors.red), onPressed: busy ? null : () => removeContent(item)),
+          ]),
         ));
       },
     ));
@@ -509,20 +547,54 @@ class SadhanaPage extends StatefulWidget {
 }
 class _SadhanaPageState extends State<SadhanaPage> {
   Timer? timer;
-  final FlutterTts tts = FlutterTts();
+  AudioPlayer? completionPlayer;
   int minutes = 15, remaining = 900;
-  bool running = false;
+  bool running = false, musicPlaying = false;
+  String? completionMusicUrl;
   final completed = <String>[];
 
   @override
   void initState() {
     super.initState();
-    tts.setVolume(1.0); tts.setSpeechRate(0.42); tts.setPitch(1.0); tts.setLanguage('hi-IN');
+    loadCompletionMusic();
   }
 
-  Future<void> announceCompletion() async {
-    try { await tts.stop(); await tts.setVolume(1.0); await tts.setLanguage('hi-IN'); await tts.speak('ॐ गुरवे नमः'); }
-    catch (_) { await SystemSound.play(SystemSoundType.alert); }
+  Future<void> loadCompletionMusic() async {
+    if (!Supabase.instance.isInitialized) return;
+    try {
+      final rows = await Supabase.instance.client.from('devotional_content')
+        .select('file_url').eq('published', true).eq('category', 'Sadhana Music')
+        .order('created_at', ascending: false).limit(1);
+      if (rows.isNotEmpty && mounted) setState(() => completionMusicUrl = rows.first['file_url']?.toString());
+    } catch (_) {}
+  }
+
+  Future<void> playCompletionMusic() async {
+    final url = completionMusicUrl;
+    if (url == null || url.isEmpty) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please ask an admin to upload the Sadhana completion music.')));
+      return;
+    }
+    try {
+      await completionPlayer?.stop();
+      completionPlayer ??= AudioPlayer();
+      await completionPlayer!.setLoopMode(LoopMode.off);
+      await completionPlayer!.setUrl(url);
+      await completionPlayer!.play();
+      if (mounted) setState(() => musicPlaying = true);
+      completionPlayer!.playerStateStream.listen((state) {
+        if (state.processingState == ProcessingState.completed && mounted) setState(() => musicPlaying = false);
+      });
+    } catch (_) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to play the Sadhana completion music.')));
+    }
+  }
+
+  Future<void> stopCompletionMusic() async {
+    await completionPlayer?.stop();
+    if (mounted) setState(() => musicPlaying = false);
   }
 
   void choose(int m) {
@@ -587,7 +659,7 @@ class _SadhanaPageState extends State<SadhanaPage> {
           completed.insert(0, DateTime.now().toString().substring(0, 16) + ' • ' + minutes.toString() + ' min');
         });
         HapticFeedback.vibrate();
-        announceCompletion();
+        playCompletionMusic();
       } else {
         setState(() => remaining--);
       }
@@ -610,7 +682,7 @@ class _SadhanaPageState extends State<SadhanaPage> {
   String durationLabel(int m) => m < 60 ? '$m min' : (m % 60 == 0 ? '${m ~/ 60} hr' : '${m ~/ 60} hr ${m % 60} min');
 
   @override
-  void dispose() { timer?.cancel(); tts.stop(); super.dispose(); }
+  void dispose() { timer?.cancel(); completionPlayer?.dispose(); super.dispose(); }
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -650,6 +722,14 @@ class _SadhanaPageState extends State<SadhanaPage> {
             ),
           ]),
           const SizedBox(height: 20),
+          if (musicPlaying) ...[
+            const SizedBox(height: 12),
+            SizedBox(width: double.infinity, child: OutlinedButton.icon(
+              onPressed: stopCompletionMusic,
+              icon: const Icon(Icons.music_off),
+              label: const Text('Stop Music'),
+            )),
+          ],
           Row(children: [
             Expanded(child: FilledButton.icon(
               onPressed: startOrPause,
@@ -658,7 +738,8 @@ class _SadhanaPageState extends State<SadhanaPage> {
               style: FilledButton.styleFrom(backgroundColor: maroon),
             )),
             const SizedBox(width: 10),
-            OutlinedButton.icon(onPressed: reset, icon: const Icon(Icons.stop), label: const Text('Reset')),
+            OutlinedButton.icon(onPressed: reset, icon: const Icon(Icons.stop),
+              label: Text(musicPlaying ? 'Stop Timer & Music' : 'Stop Timer')),
           ]),
         ]),
       ),
