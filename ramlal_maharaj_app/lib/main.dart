@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -1057,6 +1058,38 @@ class _DevoteeAuthPageState extends State<DevoteeAuthPage> {
   bool creating = false, busy = false, obscure = true;
   String? message, error;
 
+  Future<void> signInWithGoogle() async {
+    if (!Supabase.instance.isInitialized) {
+      setState(() => error = 'Account service is not configured yet.');
+      return;
+    }
+    setState(() { busy = true; error = null; message = null; });
+    try {
+      final google = GoogleSignIn.instance;
+      await google.initialize(
+        serverClientId: '735985536071-n2bvs0k7g3pvv2skln78r6spmpf9nb6k.apps.googleusercontent.com',
+      );
+      final account = await google.authenticate();
+      final idToken = account.authentication.idToken;
+      if (idToken == null || idToken.isEmpty) {
+        throw const AuthException('Google did not return an ID token. Check Google sign-in configuration.');
+      }
+      await Supabase.instance.client.auth.signInWithIdToken(
+        provider: OAuthProvider.google,
+        idToken: idToken,
+      );
+      if (mounted) {
+        Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const MainScreen()), (route) => false);
+      }
+    } on AuthException catch (e) {
+      if (mounted) setState(() => error = e.message);
+    } catch (_) {
+      if (mounted) setState(() => error = 'Google sign-in could not be completed. Check Google provider setup and try again.');
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
   Future<void> submit() async {
     if (!Supabase.instance.isInitialized) {
       setState(() => error = 'Account service is not configured yet.');
@@ -1112,6 +1145,19 @@ class _DevoteeAuthPageState extends State<DevoteeAuthPage> {
       const SizedBox(height: 12),
       const Text('Your devotional journey', textAlign: TextAlign.center, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: maroon)),
       const SizedBox(height: 22),
+      SizedBox(width: double.infinity, height: 54, child: OutlinedButton.icon(
+        onPressed: busy ? null : signInWithGoogle,
+        icon: const Icon(Icons.g_mobiledata_rounded, size: 30),
+        label: const Text('Continue with Google', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+        style: OutlinedButton.styleFrom(foregroundColor: brown, side: const BorderSide(color: paleGold),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14))))),
+      const SizedBox(height: 18),
+      const Row(children: [
+        Expanded(child: Divider(color: paleGold)),
+        Padding(padding: EdgeInsets.symmetric(horizontal: 12), child: Text('OR', style: TextStyle(color: brown))),
+        Expanded(child: Divider(color: paleGold)),
+      ]),
+      const SizedBox(height: 12),
       TextField(controller: email, keyboardType: TextInputType.emailAddress, autocorrect: false, decoration: const InputDecoration(labelText: 'Email address', prefixIcon: Icon(Icons.email_outlined))),
       const SizedBox(height: 12),
       TextField(controller: password, obscureText: obscure, decoration: InputDecoration(labelText: 'Password (minimum 6 characters)', prefixIcon: const Icon(Icons.lock_outline), suffixIcon: IconButton(onPressed: () => setState(() => obscure = !obscure), icon: Icon(obscure ? Icons.visibility : Icons.visibility_off)))),
