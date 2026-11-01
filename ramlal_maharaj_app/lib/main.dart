@@ -3,6 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:just_audio/just_audio.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:pdfrx/pdfrx.dart';
 import 'firebase_options.dart';
 
 const ivory = Color(0xFFF8F3E8);
@@ -221,10 +224,195 @@ class GalleryImagePage extends StatelessWidget {
 
 Future<void> openItem(BuildContext context, Map<String, dynamic> item) async {
   final link = (item['file_url'] ?? '').toString();
-  final uri = Uri.tryParse(link);
-  if (uri == null || link.isEmpty || !await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Content link is not available.')));
+  final category = (item['category'] ?? '').toString().toLowerCase();
+  final title = (item['title'] ?? 'Devotional content').toString();
+  final lower = link.toLowerCase().split('?').first;
+  if (link.isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Content link is not available.')));
+    return;
   }
+  if (category == 'bhajan' || category == 'aarti' || category == 'audio' ||
+      lower.endsWith('.mp3') || lower.endsWith('.m4a') || lower.endsWith('.aac') || lower.endsWith('.wav')) {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => AudioPlayerPage(url: link, title: title)));
+    return;
+  }
+  if (category == 'books' || category == 'book' || lower.endsWith('.pdf')) {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => PdfReaderPage(url: link, title: title)));
+    return;
+  }
+  final uri = Uri.tryParse(link);
+  if (uri == null || !await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Video link could not be opened.')));
+  }
+}
+
+class AudioPlayerPage extends StatefulWidget {
+  final String url, title;
+  const AudioPlayerPage({super.key, required this.url, required this.title});
+  @override
+  State<AudioPlayerPage> createState() => _AudioPlayerPageState();
+}
+class _AudioPlayerPageState extends State<AudioPlayerPage> {
+  final player = AudioPlayer();
+  String? error;
+  @override
+  void initState() {
+    super.initState();
+    player.setUrl(widget.url).catchError((e) { if (mounted) setState(() => error = 'Unable to play this audio. Please check the media file.'); });
+  }
+  @override
+  void dispose() { player.dispose(); super.dispose(); }
+  String time(Duration? d) {
+    if (d == null) return '--:--';
+    final s = d.inSeconds;
+    return '${(s ~/ 60).toString().padLeft(2, '0')}:${(s % 60).toString().padLeft(2, '0')}';
+  }
+  @override
+  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: Text(widget.title)),
+    body: Center(child: Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+      const Icon(Icons.music_note_rounded, size: 100, color: champagne),
+      const SizedBox(height: 20), Text(widget.title, textAlign: TextAlign.center, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: maroon)),
+      const SizedBox(height: 30),
+      if (error != null) Text(error!, style: const TextStyle(color: maroon))
+      else StreamBuilder<Duration?>(stream: player.durationStream, builder: (context, durationSnap) =>
+        StreamBuilder<Duration>(stream: player.positionStream, builder: (context, positionSnap) {
+          final duration = durationSnap.data ?? Duration.zero;
+          final position = positionSnap.data ?? Duration.zero;
+          final max = duration.inMilliseconds.toDouble();
+          return Column(children: [
+            Slider(value: max <= 0 ? 0 : position.inMilliseconds.clamp(0, max).toDouble(), max: max <= 0 ? 1 : max,
+              activeColor: maroon, onChanged: max <= 0 ? null : (v) => player.seek(Duration(milliseconds: v.round()))),
+            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text(time(position)), Text(time(duration))]),
+          ]);
+        })),
+      const SizedBox(height: 22),
+      Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+        IconButton(iconSize: 38, onPressed: () => player.seek(Duration.zero), icon: const Icon(Icons.replay_10, color: brown)),
+        StreamBuilder<PlayerState>(stream: player.playerStateStream, builder: (context, snap) {
+          final playing = snap.data?.playing ?? false;
+          return IconButton(iconSize: 66, color: maroon,
+            onPressed: () => playing ? player.pause() : player.play(),
+            icon: Icon(playing ? Icons.pause_circle_filled : Icons.play_circle_fill));
+        }),
+        IconButton(iconSize: 38, onPressed: () => player.seek(player.duration ?? Duration.zero), icon: const Icon(Icons.forward_10, color: brown)),
+      ]),
+    ])))));
+}
+
+class PdfReaderPage extends StatelessWidget {
+  final String url, title;
+  const PdfReaderPage({super.key, required this.url, required this.title});
+  @override
+  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: Text(title)),
+    body: PdfViewer.uri(Uri.parse(url), params: const PdfViewerParams(enableTextSelection: true)));
+}
+
+class AdminLoginPage extends StatefulWidget {
+  const AdminLoginPage({super.key});
+  @override
+  State<AdminLoginPage> createState() => _AdminLoginPageState();
+}
+class _AdminLoginPageState extends State<AdminLoginPage> {
+  final email = TextEditingController(), password = TextEditingController();
+  bool busy = false, obscure = true;
+  String? error;
+  Future<void> signIn() async {
+    if (!Supabase.instance.isInitialized) { setState(() => error = 'Secure sign-in service is not configured.'); return; }
+    setState(() { busy = true; error = null; });
+    try {
+      final response = await Supabase.instance.client.auth.signInWithPassword(email: email.text.trim(), password: password.text);
+      final role = response.user?.appMetadata['role']?.toString();
+      if (role != 'admin' && role != 'super_admin') {
+        await Supabase.instance.client.auth.signOut();
+        throw Exception('This account is not authorised as an administrator.');
+      }
+      if (!mounted) return;
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const AdminDashboardPage()));
+    } catch (e) {
+      if (mounted) setState(() => error = e.toString().replaceFirst('Exception: ', ''));
+    } finally { if (mounted) setState(() => busy = false); }
+  }
+  @override
+  void dispose() { email.dispose(); password.dispose(); super.dispose(); }
+  @override
+  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Administrator Login')),
+    body: ListView(padding: const EdgeInsets.all(22), children: [
+      const Icon(Icons.admin_panel_settings, color: maroon, size: 64),
+      const SizedBox(height: 16), const Text('Authorised administrators only', textAlign: TextAlign.center, style: TextStyle(color: brown)),
+      const SizedBox(height: 24),
+      TextField(controller: email, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Email address', prefixIcon: Icon(Icons.email_outlined))),
+      const SizedBox(height: 12),
+      TextField(controller: password, obscureText: obscure, decoration: InputDecoration(labelText: 'Password', prefixIcon: const Icon(Icons.lock_outline),
+        suffixIcon: IconButton(onPressed: () => setState(() => obscure = !obscure), icon: Icon(obscure ? Icons.visibility : Icons.visibility_off)))),
+      if (error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(error!, style: const TextStyle(color: Colors.red))),
+      const SizedBox(height: 20),
+      FilledButton(onPressed: busy ? null : signIn, style: FilledButton.styleFrom(backgroundColor: maroon),
+        child: Text(busy ? 'Signing in...' : 'Secure Login')),
+    ]));
+}
+
+class AdminDashboardPage extends StatefulWidget {
+  const AdminDashboardPage({super.key});
+  @override
+  State<AdminDashboardPage> createState() => _AdminDashboardPageState();
+}
+class _AdminDashboardPageState extends State<AdminDashboardPage> {
+  bool busy = false;
+  final title = TextEditingController(), description = TextEditingController();
+  String category = 'Bhajan';
+  final categories = const ['Bhajan','Aarti','Books','Guru Vani','Pravachan','Satsang','Gallery','Notifications'];
+  Future<void> upload() async {
+    final client = Supabase.instance.client;
+    final user = client.auth.currentUser;
+    final role = user?.appMetadata['role']?.toString();
+    if (role != 'admin' && role != 'super_admin') {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Administrator permission required.')));
+      return;
+    }
+    if (title.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter a title.')));
+      return;
+    }
+    final picked = await FilePicker.platform.pickFiles(withData: true, type: FileType.any);
+    if (picked == null || picked.files.single.bytes == null) return;
+    setState(() => busy = true);
+    try {
+      final file = picked.files.single;
+      final path = 'uploads/${DateTime.now().millisecondsSinceEpoch}_${file.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_')}';
+      await client.storage.from('prabhu').uploadBinary(path, file.bytes!,
+        fileOptions: FileOptions(upsert: false, contentType: file.extension == 'pdf' ? 'application/pdf' : null));
+      final url = client.storage.from('prabhu').getPublicUrl(path);
+      await client.from('devotional_content').insert({
+        'title': title.text.trim(), 'category': category, 'description': description.text.trim(),
+        'file_url': url, 'thumbnail_url': category == 'Gallery' ? url : null, 'published': true,
+      });
+      title.clear(); description.clear();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Content uploaded and published.')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload failed: ${e.toString()}')));
+    } finally { if (mounted) setState(() => busy = false); }
+  }
+  @override
+  void dispose() { title.dispose(); description.dispose(); super.dispose(); }
+  @override
+  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Admin Dashboard'), actions: [
+    IconButton(tooltip: 'Sign out', onPressed: () async { await Supabase.instance.client.auth.signOut(); if (context.mounted) Navigator.pop(context); }, icon: const Icon(Icons.logout))
+  ]), body: ListView(padding: const EdgeInsets.all(20), children: [
+    const Text('Manage devotional content', style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold, color: maroon)),
+    const SizedBox(height: 8), const Text('Upload photos, audio, PDFs and video links. Published items appear in the app.', style: TextStyle(color: brown)),
+    const SizedBox(height: 20),
+    TextField(controller: title, decoration: const InputDecoration(labelText: 'Content title')),
+    const SizedBox(height: 12),
+    TextField(controller: description, maxLines: 3, decoration: const InputDecoration(labelText: 'Description')),
+    const SizedBox(height: 12),
+    DropdownButtonFormField<String>(value: category, decoration: const InputDecoration(labelText: 'Category'),
+      items: categories.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(), onChanged: busy ? null : (v) { if (v != null) setState(() => category = v); }),
+    const SizedBox(height: 18),
+    FilledButton.icon(onPressed: busy ? null : upload, icon: const Icon(Icons.cloud_upload), label: Text(busy ? 'Uploading...' : 'Choose file & publish'),
+      style: FilledButton.styleFrom(backgroundColor: maroon)),
+    const SizedBox(height: 12),
+    const Text('Security note: administrator rights are verified from the signed-in account role and enforced again by Supabase Row Level Security.', style: TextStyle(fontSize: 12, color: brown)),
+  ]));
 }
 
 class EventsPage extends StatelessWidget {
@@ -320,9 +508,7 @@ class ProfilePage extends StatelessWidget {
       const ProfileTile(icon: Icons.info_outline, title: 'About the App', subtitle: 'Yog Yogeshwar Mahaprabhu Shree Ramlal Ji Maharaj'),
       const ProfileTile(icon: Icons.privacy_tip_outlined, title: 'Privacy', subtitle: 'Your practice is personal and private'),
       ProfileTile(icon: Icons.admin_panel_settings_outlined, title: 'Admin Login', subtitle: 'For authorised content administrators',
-        onTap: () => showDialog(context: context, builder: (_) => AlertDialog(title: const Text('Admin access'),
-          content: const Text('Secure administrator sign-in will be enabled after server-side admin roles are connected.'),
-          actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))]))),
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminLoginPage()))),
     ]));
 }
 class ProfileTile extends StatelessWidget {
