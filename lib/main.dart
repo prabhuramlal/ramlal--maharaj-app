@@ -1094,7 +1094,7 @@ class _SadhanaPageState extends State<SadhanaPage> {
       await completionPlayer!.setLoopMode(LoopMode.one);
       if (mounted) setState(() => musicPlaying = true);
       unawaited(completionPlayer!.play());
-      await Future<void>.delayed(const Duration(seconds: 5));
+      await Future<void>.delayed(const Duration(seconds: 15));
       await completionPlayer!.stop();
       await completionPlayer!.setLoopMode(LoopMode.off);
     } catch (_) {
