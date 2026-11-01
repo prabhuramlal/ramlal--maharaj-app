@@ -893,7 +893,13 @@ class _SadhanaPageState extends State<SadhanaPage> {
     if (seconds <= 0) {
       await prefs.remove(_deadlineKey);
       if (!mounted) return;
-      setState(() { remaining = 0; running = false; });
+      setState(() {
+        remaining = 0; running = false; _endsAt = null;
+        completed.insert(0, DateTime.now().toString().substring(0, 16) + ' • ' + minutes.toString() + ' min');
+      });
+      await _saveCompletedSessions();
+      HapticFeedback.vibrate();
+      await playCompletionMusic();
       return;
     }
     if (!mounted) return;
@@ -1087,6 +1093,13 @@ class _SadhanaPageState extends State<SadhanaPage> {
               onPressed: stopCompletionMusic,
               icon: const Icon(Icons.music_off),
               label: const Text('Stop Music'),
+            )),
+          ] else if (remaining == 0) ...[
+            const SizedBox(height: 12),
+            SizedBox(width: double.infinity, child: OutlinedButton.icon(
+              onPressed: playCompletionMusic,
+              icon: const Icon(Icons.replay),
+              label: const Text('Play Completion Music Again'),
             )),
           ],
           Row(children: [
