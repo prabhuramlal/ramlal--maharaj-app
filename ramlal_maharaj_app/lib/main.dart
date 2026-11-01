@@ -448,48 +448,150 @@ class _SadhanaPageState extends State<SadhanaPage> {
   int minutes = 15, remaining = 900;
   bool running = false;
   final completed = <String>[];
-  void choose(int m) { timer?.cancel(); setState(() { minutes = m; remaining = m * 60; running = false; }); }
-  void start() {
-    if (remaining == 0) choose(minutes);
+
+  void choose(int m) {
+    timer?.cancel();
+    setState(() { minutes = m; remaining = m * 60; running = false; });
+  }
+
+  Future<void> chooseCustomDuration() async {
+    final controller = TextEditingController();
+    final value = await showDialog<int>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Custom Sadhana Timer'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            labelText: 'Duration in minutes',
+            hintText: 'For example, 45',
+            helperText: 'Enter 1 to 1440 minutes (up to 24 hours)',
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () {
+              final parsed = int.tryParse(controller.text.trim());
+              if (parsed == null || parsed < 1 || parsed > 1440) {
+                ScaffoldMessenger.of(dialogContext).showSnackBar(
+                  const SnackBar(content: Text('Please enter 1 to 1440 minutes.')),
+                );
+                return;
+              }
+              Navigator.pop(dialogContext, parsed);
+            },
+            child: const Text('Set Timer'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (value != null && mounted) choose(value);
+  }
+
+  void startOrPause() {
+    if (running) {
+      timer?.cancel();
+      setState(() => running = false);
+      return;
+    }
+    if (remaining <= 0) remaining = minutes * 60;
     setState(() => running = true);
+    timer?.cancel();
     timer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (!mounted) return;
       if (remaining <= 1) {
         t.cancel();
-        setState(() { remaining = 0; running = false; completed.insert(0, DateTime.now().toString().substring(0, 16) + ' • ' + minutes.toString() + ' min'); });
-      } else { setState(() => remaining--); }
+        setState(() {
+          remaining = 0;
+          running = false;
+          completed.insert(0, DateTime.now().toString().substring(0, 16) + ' • ' + minutes.toString() + ' min');
+        });
+      } else {
+        setState(() => remaining--);
+      }
     });
   }
-  void reset() { timer?.cancel(); setState(() { running = false; remaining = minutes * 60; }); }
-  String clock(int s) => (s ~/ 60).toString().padLeft(2, '0') + ':' + (s % 60).toString().padLeft(2, '0');
+
+  void reset() {
+    timer?.cancel();
+    setState(() { running = false; remaining = minutes * 60; });
+  }
+
+  String clock(int s) {
+    final h = s ~/ 3600;
+    final m = (s % 3600) ~/ 60;
+    final sec = s % 60;
+    if (h > 0) return h.toString().padLeft(2, '0') + ':' + m.toString().padLeft(2, '0') + ':' + sec.toString().padLeft(2, '0');
+    return m.toString().padLeft(2, '0') + ':' + sec.toString().padLeft(2, '0');
+  }
+
+  String durationLabel(int m) => m < 60 ? '$m min' : (m % 60 == 0 ? '${m ~/ 60} hr' : '${m ~/ 60} hr ${m % 60} min');
+
   @override
   void dispose() { timer?.cancel(); super.dispose(); }
+
   @override
-  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Sadhana Timer')),
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Sadhana Timer')),
     body: ListView(padding: const EdgeInsets.all(20), children: [
-      Container(padding: const EdgeInsets.all(24), decoration: BoxDecoration(color: cardWhite, borderRadius: BorderRadius.circular(24), border: Border.all(color: paleGold)),
+      Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(color: cardWhite, borderRadius: BorderRadius.circular(24), border: Border.all(color: paleGold)),
         child: Column(children: [
           const Text('ॐ गुरवे नमः', style: TextStyle(color: maroon, fontSize: 22, fontWeight: FontWeight.w600)),
           const SizedBox(height: 22),
           SizedBox(width: 210, height: 210, child: Stack(fit: StackFit.expand, children: [
-            CircularProgressIndicator(value: minutes == 0 ? 0 : remaining / (minutes * 60), strokeWidth: 9, backgroundColor: ivory, color: champagne),
+            CircularProgressIndicator(
+              value: minutes == 0 ? 0 : remaining / (minutes * 60),
+              strokeWidth: 9, backgroundColor: ivory, color: champagne,
+            ),
             Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Text(clock(remaining), style: const TextStyle(fontSize: 43, fontWeight: FontWeight.bold, color: maroon)),
+              Text(clock(remaining), style: const TextStyle(fontSize: 39, fontWeight: FontWeight.bold, color: maroon)),
               const Text('TIME REMAINING', style: TextStyle(fontSize: 10, letterSpacing: 1.2, color: brown)),
-            ]))])),
+            ])),
+          ])),
           const SizedBox(height: 22),
-          Wrap(spacing: 8, children: [15, 30, 60, 120].map((m) => ChoiceChip(label: Text(m < 60 ? m.toString() + ' min' : (m ~/ 60).toString() + ' hr'),
-            selected: minutes == m, onSelected: running ? null : (_) => choose(m), selectedColor: paleGold)).toList()),
+          const Align(alignment: Alignment.centerLeft, child: Text('Choose duration', style: TextStyle(fontWeight: FontWeight.w600, color: brown))),
+          const SizedBox(height: 10),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            ...[15, 30, 60, 120].map((m) => ChoiceChip(
+              label: Text(durationLabel(m)),
+              selected: minutes == m,
+              onSelected: running ? null : (_) => choose(m),
+              selectedColor: paleGold,
+            )),
+            ActionChip(
+              avatar: const Icon(Icons.edit, size: 17, color: maroon),
+              label: Text(minutes == 15 || minutes == 30 || minutes == 60 || minutes == 120 ? 'Custom' : durationLabel(minutes)),
+              backgroundColor: (minutes == 15 || minutes == 30 || minutes == 60 || minutes == 120) ? ivory : paleGold,
+              onPressed: running ? null : chooseCustomDuration,
+            ),
+          ]),
           const SizedBox(height: 20),
           Row(children: [
-            Expanded(child: FilledButton.icon(onPressed: running ? null : start, icon: const Icon(Icons.play_arrow), label: Text(running ? 'Running' : 'Start'), style: FilledButton.styleFrom(backgroundColor: maroon))),
-            const SizedBox(width: 10), OutlinedButton.icon(onPressed: reset, icon: const Icon(Icons.stop), label: const Text('Reset')),
+            Expanded(child: FilledButton.icon(
+              onPressed: startOrPause,
+              icon: Icon(running ? Icons.pause : Icons.play_arrow),
+              label: Text(running ? 'Pause' : remaining == minutes * 60 ? 'Start' : 'Resume'),
+              style: FilledButton.styleFrom(backgroundColor: maroon),
+            )),
+            const SizedBox(width: 10),
+            OutlinedButton.icon(onPressed: reset, icon: const Icon(Icons.stop), label: const Text('Reset')),
           ]),
-        ])),
-      const SizedBox(height: 22), const Text('Completed sessions', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: brown)),
-      if (completed.isEmpty) const Padding(padding: EdgeInsets.only(top: 8), child: Text('Completed sessions will appear here during this app session.', style: TextStyle(color: brown)))
-      else ...completed.map((s) => ListTile(leading: const Icon(Icons.check_circle_outline, color: champagne), title: Text(s))),
-    ]));
+        ]),
+      ),
+      const SizedBox(height: 22),
+      const Text('Completed sessions', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: brown)),
+      if (completed.isEmpty)
+        const Padding(padding: EdgeInsets.only(top: 8), child: Text('Completed sessions will appear here during this app session.', style: TextStyle(color: brown)))
+      else
+        ...completed.map((s) => ListTile(leading: const Icon(Icons.check_circle_outline, color: champagne), title: Text(s))),
+    ]),
+  );
 }
 
 class ProfilePage extends StatelessWidget {
