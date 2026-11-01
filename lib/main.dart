@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
-import 'package:google_sign_in/google_sign_in.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -967,33 +966,20 @@ class _SadhanaPageState extends State<SadhanaPage> {
   }
 
   Future<void> playCompletionMusic() async {
-    final url = completionMusicUrl;
     try {
       await completionPlayer?.stop();
       completionPlayer ??= AudioPlayer();
       await completionPlayer!.setAsset('assets/sounds/temple_bell.wav');
-      await completionPlayer!.play();
       if (mounted) setState(() => musicPlaying = true);
-    } catch (_) {}
-    if (url == null || url.isEmpty) return;
-    if (url == null || url.isEmpty) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please ask an admin to upload the Sadhana completion music.')));
-      return;
-    }
-    try {
-      await completionPlayer?.stop();
-      completionPlayer ??= AudioPlayer();
-      await completionPlayer!.setLoopMode(LoopMode.off);
-      await completionPlayer!.setUrl(url);
       await completionPlayer!.play();
-      if (mounted) setState(() => musicPlaying = true);
-      completionPlayer!.playerStateStream.listen((state) {
-        if (state.processingState == ProcessingState.completed && mounted) setState(() => musicPlaying = false);
-      });
     } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Unable to play the Sadhana completion music.')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Unable to play the temple bell.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => musicPlaying = false);
     }
   }
 
