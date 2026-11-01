@@ -64,6 +64,7 @@ class RamlalMaharajApp extends StatelessWidget {
   const RamlalMaharajApp({super.key});
   @override
   Widget build(BuildContext context) => MaterialApp(
+    scaffoldMessengerKey: appMessengerKey,
     debugShowCheckedModeBanner: false,
     title: 'Yog Yogeshwar Mahaprabhu',
     theme: ThemeData(useMaterial3: true, scaffoldBackgroundColor: ivory,
@@ -176,7 +177,7 @@ class HomePage extends StatelessWidget {
             colors: [Color(0xFFFFF9ED), Color(0xFFEAD8B4), Color(0xFFFFFDF7)]),
           boxShadow: [BoxShadow(color: champagne.withValues(alpha: .16), blurRadius: 16, offset: const Offset(0, 5))]),
         child: ClipRRect(borderRadius: BorderRadius.circular(23), child: Stack(fit: StackFit.expand, children: [
-          Container(color: const Color(0xFFFFF9ED), alignment: Alignment.center, child: Image.asset('assets/images/gurudev_logo_png.jpeg', fit: BoxFit.cover, alignment: const Alignment(0, -0.28), width: double.infinity, height: double.infinity)),
+          Container(color: const Color(0xFFFFF9ED), alignment: Alignment.center, child: Image.asset('assets/images/gurudev_app_icon.jpg', fit: BoxFit.cover, alignment: const Alignment(0, -0.28), width: double.infinity, height: double.infinity)),
           DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withValues(alpha: .58)]))),
           const Align(alignment: Alignment.bottomCenter, child: Padding(padding: EdgeInsets.only(bottom: 14), child: Text('जय गुरुदेव 🙏', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white, shadows: [Shadow(color: Colors.black54, blurRadius: 8)])))),
         ]))))),
@@ -1360,7 +1361,7 @@ class _ProfilePageState extends State<ProfilePage> {
             const SizedBox(height: 5), const Text('ॐ गुरवे नमः', style: TextStyle(color: brown)),
           ])),
         const SizedBox(height: 18),
-        ProfileTile(icon: Icons.language, title: appText('App language • हिन्दी / English', 'ऐप की भाषा • हिन्दी / English'), subtitle: appText('Choose Hindi or English', 'हिन्दी या English चुनें'), onTap: () => showDialog<void>(context: context, builder: (dialogContext) => AlertDialog(title: Text(appText('App language', 'ऐप की भाषा')), content: Column(mainAxisSize: MainAxisSize.min, children: [ListTile(title: const Text('हिन्दी'), trailing: appHindi.value ? const Icon(Icons.check, color: maroon) : null, onTap: () async { appHindi.value = true; final p = await SharedPreferences.getInstance(); await p.setBool('app_language_hindi', true); if (dialogContext.mounted) Navigator.pop(dialogContext); }), ListTile(title: const Text('English'), trailing: !appHindi.value ? const Icon(Icons.check, color: maroon) : null, onTap: () async { appHindi.value = false; final p = await SharedPreferences.getInstance(); await p.setBool('app_language_hindi', false); if (dialogContext.mounted) Navigator.pop(dialogContext); })]))),
+        ProfileTile(icon: Icons.language, title: appText('App language • हिन्दी / English', 'ऐप की भाषा • हिन्दी / English'), subtitle: appText('Choose Hindi or English', 'हिन्दी या English चुनें'), onTap: () => showDialog<void>(context: context, builder: (dialogContext) => AlertDialog(title: Text(appText('App language', 'ऐप की भाषा')), content: Column(mainAxisSize: MainAxisSize.min, children: [ListTile(title: const Text('हिन्दी'), trailing: appHindi.value ? const Icon(Icons.check, color: maroon) : null, onTap: () async { appHindi.value = true; final p = await SharedPreferences.getInstance(); await p.setBool('app_language_hindi', true); if (dialogContext.mounted) { Navigator.pop(dialogContext); if (mounted) setState(() {}); } }), ListTile(title: const Text('English'), trailing: !appHindi.value ? const Icon(Icons.check, color: maroon) : null, onTap: () async { appHindi.value = false; final p = await SharedPreferences.getInstance(); await p.setBool('app_language_hindi', false); if (dialogContext.mounted) { Navigator.pop(dialogContext); if (mounted) setState(() {}); } })]))),
         if (user == null)
           ProfileTile(icon: Icons.login, title: 'भक्त लॉगिन / Devotee Login', subtitle: 'Sign in or create a free account', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DevoteeAuthPage()))),
         if (user != null)
