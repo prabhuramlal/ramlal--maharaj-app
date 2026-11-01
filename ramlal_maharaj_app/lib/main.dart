@@ -39,7 +39,45 @@ class RamlalMaharajApp extends StatelessWidget {
     theme: ThemeData(useMaterial3: true, scaffoldBackgroundColor: ivory,
       colorScheme: ColorScheme.fromSeed(seedColor: champagne, primary: maroon, surface: ivory),
       appBarTheme: const AppBarTheme(backgroundColor: ivory, foregroundColor: brown, elevation: 0)),
-    home: const MainScreen());
+    home: const WelcomeGate());
+}
+
+class WelcomeGate extends StatelessWidget {
+  const WelcomeGate({super.key});
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    body: SafeArea(child: Center(child: SingleChildScrollView(
+      padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 28),
+      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+        Container(width: 112, height: 112, decoration: BoxDecoration(shape: BoxShape.circle, color: paleGold, border: Border.all(color: champagne, width: 2)),
+          child: const Icon(Icons.temple_hindu_rounded, color: maroon, size: 66)),
+        const SizedBox(height: 26),
+        const Text('जय गुरुदेव 🙏', style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: maroon)),
+        const SizedBox(height: 10),
+        const Text('Yog Yogeshwar Mahaprabhu', textAlign: TextAlign.center, style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: brown)),
+        const Text('Shree Ramlal Ji Maharaj', textAlign: TextAlign.center, style: TextStyle(fontSize: 18, color: brown)),
+        const SizedBox(height: 12),
+        const Text('ॐ गुरवे नमः', style: TextStyle(fontSize: 22, color: champagne, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 34),
+        SizedBox(width: double.infinity, child: FilledButton.icon(
+          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DevoteeAuthPage())),
+          icon: const Icon(Icons.login), label: const Text('Login / Create Account'),
+          style: FilledButton.styleFrom(backgroundColor: maroon, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 16)))),
+        const SizedBox(height: 12),
+        SizedBox(width: double.infinity, child: OutlinedButton(
+          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminLoginPage())),
+          style: OutlinedButton.styleFrom(foregroundColor: maroon, side: const BorderSide(color: champagne), padding: const EdgeInsets.symmetric(vertical: 14)),
+          child: const Text('Administrator Login'))),
+        const SizedBox(height: 18),
+        TextButton.icon(
+          onPressed: () => Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const MainScreen())),
+          icon: const Icon(Icons.arrow_forward_rounded), label: const Text('Skip for now — Continue as Guest'),
+          style: TextButton.styleFrom(foregroundColor: brown)),
+        const SizedBox(height: 10),
+        const Text('You can use the app without an account. Sign in is optional.', textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: brown)),
+      ]),
+    ))),
+  );
 }
 
 class MainScreen extends StatefulWidget {
@@ -1023,11 +1061,11 @@ class _DevoteeAuthPageState extends State<DevoteeAuthPage> {
         if (result.session == null) {
           setState(() => message = 'Account created. Please verify your email, then sign in.');
         } else if (mounted) {
-          Navigator.pop(context);
+          Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const MainScreen()), (route) => false);
         }
       } else {
         await auth.signInWithPassword(email: email.text.trim(), password: password.text);
-        if (mounted) Navigator.pop(context);
+        if (mounted) Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const MainScreen()), (route) => false);
       }
     } on AuthException catch (e) {
       if (mounted) setState(() => error = e.message);
