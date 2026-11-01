@@ -5,7 +5,7 @@
     <application
         android:label="Yog Yogeshwar Mahaprabhu"
         android:name="${applicationName}"
-        android:icon="@drawable/ic_gurudev_launcher">
+        android:icon="@drawable/gurudev_app_icon">
         <activity
             android:name=".MainActivity"
             android:exported="true"
