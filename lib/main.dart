@@ -183,7 +183,7 @@ class HomePage extends StatelessWidget {
             colors: [Color(0xFFFFF9ED), Color(0xFFEAD8B4), Color(0xFFFFFDF7)]),
           boxShadow: [BoxShadow(color: champagne.withValues(alpha: .16), blurRadius: 16, offset: const Offset(0, 5))]),
         child: ClipRRect(borderRadius: BorderRadius.circular(23), child: Stack(fit: StackFit.expand, children: [
-          Container(color: const Color(0xFFFFF9ED), alignment: Alignment.center, child: Image.asset('assets/images/gurudev_app_icon.jpg', fit: BoxFit.cover, alignment: const Alignment(0, -0.28), width: double.infinity, height: double.infinity)),
+          Container(color: const Color(0xFFFFF9ED), alignment: Alignment.center, child: Image.asset('assets/images/gurudev_logo_png.jpeg', fit: BoxFit.cover, alignment: const Alignment(0, -0.28), width: double.infinity, height: double.infinity)),
           DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withValues(alpha: .58)]))),
           const Align(alignment: Alignment.bottomCenter, child: Padding(padding: EdgeInsets.only(bottom: 14), child: Text('जय गुरुदेव 🙏', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white, shadows: [Shadow(color: Colors.black54, blurRadius: 8)])))),
         ]))))),
