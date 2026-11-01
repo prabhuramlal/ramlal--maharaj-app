@@ -75,7 +75,6 @@ flutter:
   assets:
     - assets/sounds/temple_bell.wav
     - assets/images/gurudev_logo_png.jpeg
-    - assets/images/gurudev_app_icon.jpg
 
   # To add assets to your application, add an assets section, like this:
   # assets:
