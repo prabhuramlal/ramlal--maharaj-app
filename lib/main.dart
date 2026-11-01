@@ -169,7 +169,7 @@ class HomePage extends StatelessWidget {
             colors: [Color(0xFFFFF9ED), Color(0xFFEAD8B4), Color(0xFFFFFDF7)]),
           boxShadow: [BoxShadow(color: champagne.withValues(alpha: .16), blurRadius: 16, offset: const Offset(0, 5))]),
         child: ClipRRect(borderRadius: BorderRadius.circular(23), child: Stack(fit: StackFit.expand, children: [
-          Image.asset('assets/images/gurudev_logo_png.jpeg', fit: BoxFit.cover),
+          Container(color: const Color(0xFFFFF9ED), alignment: Alignment.center, child: Image.asset('assets/images/gurudev_logo_png.jpeg', fit: BoxFit.contain, width: double.infinity, height: double.infinity)),
           DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withValues(alpha: .58)]))),
           const Align(alignment: Alignment.bottomCenter, child: Padding(padding: EdgeInsets.only(bottom: 14), child: Text('जय गुरुदेव 🙏', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white, shadows: [Shadow(color: Colors.black54, blurRadius: 8)])))),
         ]))))),
@@ -493,7 +493,7 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
   bool busy = false, obscure = true;
   String? error;
   Future<void> signIn() async {
-    if (!Supabase.instance.isInitialized) { setState(() => error = 'Secure sign-in service is not configured.'); return; }
+    if (!Supabase.instance.isInitialized) { setState(() => error = 'Administrator sign-in is not configured in this build. The app needs the Supabase project URL and publishable key from the app administrator. Please configure SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY in GitHub Actions repository secrets, then rebuild.'); return; }
     setState(() { busy = true; error = null; });
     try {
       final response = await Supabase.instance.client.auth.signInWithPassword(email: email.text.trim(), password: password.text);
@@ -1090,8 +1090,11 @@ class _SadhanaPageState extends State<SadhanaPage> {
       await completionPlayer?.stop();
       completionPlayer ??= AudioPlayer();
       await completionPlayer!.setAsset('assets/sounds/temple_bell.wav');
+      await completionPlayer!.setVolume(1.0);
       if (mounted) setState(() => musicPlaying = true);
       await completionPlayer!.play();
+      await Future<void>.delayed(const Duration(seconds: 5));
+      await completionPlayer!.stop();
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
