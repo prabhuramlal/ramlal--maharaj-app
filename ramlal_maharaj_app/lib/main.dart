@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -370,41 +371,33 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Administrator permission required.')));
       return;
     }
-    if (category != 'Gallery' && category != 'Pravachan' && title.text.trim().isEmpty) {
+    if (category != 'Gallery' && title.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter a content title.')));
       return;
     }
     final picked = await FilePicker.platform.pickFiles(withData: true, type: FileType.any);
-    if (picked == null || picked.files.single.bytes == null) return;
+    if (picked == null || picked.files.single.bytes == null || !mounted) return;
     setState(() => busy = true);
     try {
       final file = picked.files.single;
       final safeName = file.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
-      final path = 'uploads/${DateTime.now().millisecondsSinceEpoch}_$safeName';
-      await client.storage.from('prabhu').uploadBinary(path, file.bytes!,
-        fileOptions: FileOptions(upsert: false));
-      final url = client.storage.from('prabhu').getPublicUrl(path);
-      final contentTitle = category == 'Gallery'
-          ? ''
-          : (title.text.trim().isNotEmpty ? title.text.trim() : file.name);
+      final storagePath = 'uploads/${DateTime.now().millisecondsSinceEpoch}_$safeName';
+      await client.storage.from('prabhu').uploadBinary(storagePath, file.bytes!, fileOptions: FileOptions(upsert: false));
+      final url = client.storage.from('prabhu').getPublicUrl(storagePath);
       await client.from('devotional_content').insert({
-        'title': contentTitle, 'category': category, 'description': description.text.trim(),
-        'file_url': url, 'thumbnail_url': category == 'Gallery' ? url : null, 'published': true,
+        'title': category == 'Gallery' ? '' : (title.text.trim().isEmpty ? file.name : title.text.trim()),
+        'category': category, 'description': description.text.trim(), 'file_url': url,
+        'thumbnail_url': category == 'Gallery' ? url : null, 'published': true,
       });
       title.clear(); description.clear();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Content uploaded and published.')));
-        setState(() {});
-      }
+      if (mounted) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Content uploaded and published.'))); setState(() {}); }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload failed: ${e.toString()}')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload failed: $e')));
     } finally { if (mounted) setState(() => busy = false); }
   }
 
   Future<List<Map<String, dynamic>>> loadManagedContent() async {
-    final rows = await Supabase.instance.client.from('devotional_content')
-      .select('id,title,category,file_url,created_at,published')
-      .order('created_at', ascending: false);
+    final rows = await Supabase.instance.client.from('devotional_content').select('id,title,category,file_url,created_at,published').order('created_at', ascending: false);
     return List<Map<String, dynamic>>.from(rows);
   }
 
@@ -412,32 +405,27 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     final id = item['id'];
     if (id == null) return;
     final confirmed = await showDialog<bool>(context: context, builder: (dialogContext) => AlertDialog(
-      title: const Text('Remove content?'),
-      content: Text('This will remove "${item['title'] ?? 'this item'}" from the app.'),
+      title: const Text('Remove media?'), content: const Text('This item will be removed from the app.'),
       actions: [
         TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
-        FilledButton(onPressed: () => Navigator.pop(dialogContext, true),
-          style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700), child: const Text('Remove')),
+        FilledButton(onPressed: () => Navigator.pop(dialogContext, true), style: FilledButton.styleFrom(backgroundColor: Colors.red), child: const Text('Remove')),
       ],
     ));
     if (confirmed != true || !mounted) return;
     setState(() => busy = true);
     try {
       final client = Supabase.instance.client;
-      final url = (item['file_url'] ?? '').toString();
+      final fileUrl = (item['file_url'] ?? '').toString();
       const marker = '/storage/v1/object/public/prabhu/';
-      final markerIndex = url.indexOf(marker);
+      final markerIndex = fileUrl.indexOf(marker);
       if (markerIndex >= 0) {
-        final storagePath = Uri.decodeComponent(url.substring(markerIndex + marker.length));
-        try { await client.storage.from('prabhu').remove([storagePath]); } catch (_) {}
+        final storagePath = Uri.decodeComponent(fileUrl.substring(markerIndex + marker.length));
+        await client.storage.from('prabhu').remove([storagePath]);
       }
       await client.from('devotional_content').delete().eq('id', id);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Content removed.')));
-        setState(() {});
-      }
+      if (mounted) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Media removed.'))); setState(() {}); }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not remove content: ${e.toString()}')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not remove media: $e')));
     } finally { if (mounted) setState(() => busy = false); }
   }
 
@@ -446,63 +434,43 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
 
   Widget uploadTab() => ListView(padding: const EdgeInsets.all(20), children: [
     const Text('Upload devotional content', style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold, color: maroon)),
-    const SizedBox(height: 8),
-    const Text('Upload photos, bhajans, aarti, books and other devotional media. Uploaded content is published immediately.', style: TextStyle(color: brown)),
+    const SizedBox(height: 8), const Text('Upload photos, bhajans, aarti, books and other devotional media.', style: TextStyle(color: brown)),
     const SizedBox(height: 20),
     DropdownButtonFormField<String>(value: category, decoration: const InputDecoration(labelText: 'Content category'),
       items: categories.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
       onChanged: busy ? null : (v) { if (v != null) setState(() => category = v); }),
     const SizedBox(height: 12),
-    if (category == 'Gallery')
-      const Padding(padding: EdgeInsets.only(bottom: 12),
-        child: Text('Gallery photos are added without a photo title.', style: TextStyle(color: brown)))
-    else ...[
-      TextField(controller: title, decoration: const InputDecoration(labelText: 'Content title')),
-      const SizedBox(height: 12),
-    ],
+    if (category == 'Gallery') const Text('Photos are uploaded without displaying their file names.', style: TextStyle(color: brown))
+    else TextField(controller: title, decoration: const InputDecoration(labelText: 'Content title')),
+    const SizedBox(height: 12),
     TextField(controller: description, maxLines: 3, decoration: const InputDecoration(labelText: 'Description (optional)')),
     const SizedBox(height: 18),
-    FilledButton.icon(onPressed: busy ? null : upload, icon: const Icon(Icons.cloud_upload),
-      label: Text(busy ? 'Uploading...' : 'Choose file & publish'),
-      style: FilledButton.styleFrom(backgroundColor: maroon)),
-    const SizedBox(height: 20),
-    const Text('Access is restricted to authorised administrator accounts. Supabase policies also enforce permissions.', style: TextStyle(fontSize: 12, color: brown)),
+    FilledButton.icon(onPressed: busy ? null : upload, icon: const Icon(Icons.cloud_upload), label: Text(busy ? 'Uploading...' : 'Choose file & publish'), style: FilledButton.styleFrom(backgroundColor: maroon)),
   ]);
 
-  Widget manageTab() => FutureBuilder<List<Map<String, dynamic>>>(
-    key: ValueKey(DateTime.now().millisecondsSinceEpoch ~/ 1000),
-    future: loadManagedContent(),
-    builder: (context, snapshot) {
-      if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: champagne));
-      if (snapshot.hasError) return Center(child: Text('Unable to load content: ${snapshot.error}'));
-      final rows = snapshot.data ?? [];
-      if (rows.isEmpty) return const Center(child: Text('No uploaded content yet.'));
-      return RefreshIndicator(
-        onRefresh: () async { setState(() {}); await Future<void>.delayed(const Duration(milliseconds: 250)); },
-        child: ListView.separated(padding: const EdgeInsets.all(16), itemCount: rows.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 8),
-          itemBuilder: (context, index) {
-            final item = rows[index];
-            final isPhoto = item['category'] == 'Gallery';
-            return Card(color: cardWhite, child: ListTile(
-              leading: Icon(isPhoto ? Icons.image : Icons.perm_media, color: champagne),
-              title: Text(isPhoto ? 'Photo' : (item['title'] ?? 'Untitled').toString()),
-              subtitle: Text('${item['category'] ?? 'Media'} • ${item['published'] == true ? 'Published' : 'Draft'}'),
-              trailing: IconButton(tooltip: 'Remove media', icon: const Icon(Icons.delete_outline, color: Colors.red),
-                onPressed: busy ? null : () => removeContent(item)),
-            ));
-          }),
-      );
-    },
-  );
+  Widget manageTab() => FutureBuilder<List<Map<String, dynamic>>>(future: loadManagedContent(), builder: (context, snapshot) {
+    if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: champagne));
+    if (snapshot.hasError) return Center(child: Text('Unable to load media: ${snapshot.error}'));
+    final rows = snapshot.data ?? [];
+    if (rows.isEmpty) return const Center(child: Text('No uploaded media yet.'));
+    return RefreshIndicator(onRefresh: () async { setState(() {}); }, child: ListView.separated(
+      padding: const EdgeInsets.all(16), itemCount: rows.length, separatorBuilder: (_, __) => const SizedBox(height: 8),
+      itemBuilder: (context, index) {
+        final item = rows[index]; final photo = item['category'] == 'Gallery';
+        return Card(color: cardWhite, child: ListTile(
+          leading: Icon(photo ? Icons.image : Icons.perm_media, color: champagne),
+          title: Text(photo ? 'Photo' : (item['title'] ?? 'Untitled').toString()),
+          subtitle: Text((item['category'] ?? 'Media').toString()),
+          trailing: IconButton(tooltip: 'Remove media', icon: const Icon(Icons.delete_outline, color: Colors.red), onPressed: busy ? null : () => removeContent(item)),
+        ));
+      },
+    ));
+  });
 
   @override
   Widget build(BuildContext context) => DefaultTabController(length: 2, child: Scaffold(
     appBar: AppBar(title: const Text('Admin Portal'), actions: [
-      IconButton(tooltip: 'Sign out', onPressed: () async {
-        await Supabase.instance.client.auth.signOut();
-        if (context.mounted) Navigator.pop(context);
-      }, icon: const Icon(Icons.logout)),
+      IconButton(tooltip: 'Sign out', onPressed: () async { await Supabase.instance.client.auth.signOut(); if (context.mounted) Navigator.pop(context); }, icon: const Icon(Icons.logout)),
     ], bottom: const TabBar(tabs: [
       Tab(icon: Icon(Icons.cloud_upload_outlined), text: 'Upload'),
       Tab(icon: Icon(Icons.library_music_outlined), text: 'Manage Media'),
@@ -549,252 +517,13 @@ class _SadhanaPageState extends State<SadhanaPage> {
   @override
   void initState() {
     super.initState();
-    tts.setVolume(1.0);
-    tts.setSpeechRate(0.42);
-    tts.setPitch(1.0);
-    tts.setLanguage('hi-IN');
+    tts.setVolume(1.0); tts.setSpeechRate(0.42); tts.setPitch(1.0); tts.setLanguage('hi-IN');
   }
 
   Future<void> announceCompletion() async {
-    try {
-      await tts.stop();
-      await tts.setVolume(1.0);
-      await tts.setLanguage('hi-IN');
-      await tts.speak('ॐ गुरवे नमः');
-    } catch (_) {
-      await SystemSound.play(SystemSoundType.alert);
-    }
+    try { await tts.stop(); await tts.setVolume(1.0); await tts.setLanguage('hi-IN'); await tts.speak('ॐ गुरवे नमः'); }
+    catch (_) { await SystemSound.play(SystemSoundType.alert); }
   }
-
-  void choose(int m) {
-    timer?.cancel();
-    setState(() { minutes = m; remaining = m * 60; running = false; });
-  }
-
-  Future<void> chooseCustomDuration() async {
-    final controller = TextEditingController();
-    final value = await showDialog<int>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Custom Sadhana Timer'),
-        content: TextField(controller: controller, autofocus: true, keyboardType: TextInputType.number,
-          decoration: const InputDecoration(labelText: 'Duration in minutes', hintText: 'For example, 45',
-            helperText: 'Enter 1 to 1440 minutes (up to 24 hours)')),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
-          FilledButton(onPressed: () {
-            final parsed = int.tryParse(controller.text.trim());
-            if (parsed == null || parsed < 1 || parsed > 1440) {
-              ScaffoldMessenger.of(dialogContext).showSnackBar(const SnackBar(content: Text('Please enter 1 to 1440 minutes.')));
-              return;
-            }
-            Navigator.pop(dialogContext, parsed);
-          }, child: const Text('Set Timer')),
-        ],
-      ),
-    );
-    controller.dispose();
-    if (value != null && mounted) choose(value);
-  }
-
-  void startOrPause() {
-    if (running) {
-      timer?.cancel();
-      setState(() => running = false);
-      return;
-    }
-    if (remaining <= 0) remaining = minutes * 60;
-    setState(() => running = true);
-    timer?.cancel();
-    timer = Timer.periodic(const Duration(seconds: 1), (t) {
-      if (!mounted) return;
-      if (remaining <= 1) {
-        t.cancel();
-        setState(() {
-          remaining = 0;
-          running = false;
-          completed.insert(0, DateTime.now().toString().substring(0, 16) + ' • ' + minutes.toString() + ' min');
-        });
-        HapticFeedback.vibrate();
-        announceCompletion();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Sadhana completed. ॐ गुरवे नमः'), duration: Duration(seconds: 4)),
-        );
-      } else {
-        setState(() => remaining--);
-      }
-    });
-  }
-
-  void reset() {
-    timer?.cancel();
-    setState(() { running = false; remaining = minutes * 60; });
-  }
-
-  String clock(int s) {
-    final h = s ~/ 3600, m = (s % 3600) ~/ 60, sec = s % 60;
-    if (h > 0) return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}';
-    return '${m.toString().padLeft(2, '0')}:${sec.toString().padLeft(2, '0')}';
-  }
-
-  String durationLabel(int m) => m < 60 ? '$m min' : (m % 60 == 0 ? '${m ~/ 60} hr' : '${m ~/ 60} hr ${m % 60} min');
-
-  @override
-  void dispose() { timer?.cancel(); tts.stop(); super.dispose(); }
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Sadhana Timer')),
-    body: ListView(padding: const EdgeInsets.all(20), children: [
-      Container(padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(color: cardWhite, borderRadius: BorderRadius.circular(24), border: Border.all(color: paleGold)),
-        child: Column(children: [
-          const Text('ॐ गुरवे नमः', style: TextStyle(color: maroon, fontSize: 22, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 22),
-          SizedBox(width: 210, height: 210, child: Stack(fit: StackFit.expand, children: [
-            CircularProgressIndicator(value: minutes == 0 ? 0 : remaining / (minutes * 60),
-              strokeWidth: 9, backgroundColor: ivory, color: champagne),
-            Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Text(clock(remaining), style: const TextStyle(fontSize: 39, fontWeight: FontWeight.bold, color: maroon)),
-              const Text('TIME REMAINING', style: TextStyle(fontSize: 10, letterSpacing: 1.2, color: brown)),
-            ])),
-          ])),
-          const SizedBox(height: 22),
-          const Align(alignment: Alignment.centerLeft, child: Text('Choose duration', style: TextStyle(fontWeight: FontWeight.w600, color: brown))),
-          const SizedBox(height: 10),
-          Wrap(spacing: 8, runSpacing: 8, children: [
-            ...[15, 30, 60, 120].map((m) => ChoiceChip(label: Text(durationLabel(m)), selected: minutes == m,
-              onSelected: running ? null : (_) => choose(m), selectedColor: paleGold)),
-            ActionChip(avatar: const Icon(Icons.edit, size: 17, color: maroon),
-              label: Text([15,30,60,120].contains(minutes) ? 'Custom' : durationLabel(minutes)),
-              backgroundColor: [15,30,60,120].contains(minutes) ? ivory : paleGold,
-              onPressed: running ? null : chooseCustomDuration),
-          ]),
-          const SizedBox(height: 20),
-          Row(children: [
-            Expanded(child: FilledButton.icon(onPressed: startOrPause,
-              icon: Icon(running ? Icons.pause : Icons.play_arrow),
-              label: Text(running ? 'Pause' : remaining == minutes * 60 ? 'Start' : 'Resume'),
-              style: FilledButton.styleFrom(backgroundColor: maroon))),
-            const SizedBox(width: 10),
-            OutlinedButton.icon(onPressed: reset, icon: const Icon(Icons.stop), label: const Text('Reset')),
-          ]),
-        ]),
-      ),
-      const SizedBox(height: 22),
-      const Text('Completed sessions', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: brown)),
-      if (completed.isEmpty)
-        const Padding(padding: EdgeInsets.only(top: 8), child: Text('Completed sessions will appear here during this app session.', style: TextStyle(color: brown)))
-      else ...completed.map((s) => ListTile(leading: const Icon(Icons.check_circle_outline, color: champagne), title: Text(s))),
-    ]),
-  );
-}
-
-class ProfilePage extends StatelessWidget {
-  const ProfilePage({super.key});
-  @override
-  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Profile')),
-    body: ListView(padding: const EdgeInsets.all(20), children: [
-      Container(padding: const EdgeInsets.all(22), decoration: BoxDecoration(color: cardWhite, borderRadius: BorderRadius.circular(20), border: Border.all(color: paleGold)),
-        child: const Column(children: [
-          CircleAvatar(radius: 38, backgroundColor: ivory, child: Icon(Icons.person, size: 42, color: maroon)),
-          SizedBox(height: 12), Text('Welcome, Devotee', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: maroon)),
-          SizedBox(height: 5), Text('ॐ गुरवे नमः', style: TextStyle(color: brown)),
-        ])),
-      const SizedBox(height: 18),
-      ProfileTile(icon: Icons.favorite_outline, title: 'Favourites', subtitle: 'Your saved devotional items', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ContentPage(category: 'Favourites', title: 'Favourites')))),
-      const ProfileTile(icon: Icons.info_outline, title: 'About the App', subtitle: 'Yog Yogeshwar Mahaprabhu Shree Ramlal Ji Maharaj'),
-      const ProfileTile(icon: Icons.privacy_tip_outlined, title: 'Privacy', subtitle: 'Your practice is personal and private'),
-      ProfileTile(icon: Icons.admin_panel_settings_outlined, title: 'Admin Login', subtitle: 'For authorised content administrators',
-        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminLoginPage()))),
-    ]));
-}
-class ProfileTile extends StatelessWidget {
-  final IconData icon; final String title, subtitle; final VoidCallback? onTap;
-  const ProfileTile({super.key, required this.icon, required this.title, required this.subtitle, this.onTap});
-  @override
-  Widget build(BuildContext context) => Card(color: cardWhite, elevation: 0, child: ListTile(leading: Icon(icon, color: champagne),
-    title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600, color: brown)), subtitle: Text(subtitle),
-    trailing: const Icon(Icons.chevron_right), onTap: onTap));
-}
-class EmptyState extends StatelessWidget {
-  final String message;
-  const EmptyState({super.key, required this.message});
-  @override
-  Widget build(BuildContext context) => Center(child: Padding(padding: const EdgeInsets.all(28),
-    child: Column(mainAxisSize: MainAxisSize.min, children: [
-      const Icon(Icons.menu_book_outlined, color: champagne, size: 48), const SizedBox(height: 14),
-      Text(message, textAlign: TextAlign.center, style: const TextStyle(color: brown, fontSize: 15)),
-    ])));
-}
-), '').replaceAll('_', ' ')
-              : file.name);
-      await client.from('devotional_content').insert({
-        'title': contentTitle, 'category': category, 'description': description.text.trim(),
-        'file_url': url, 'thumbnail_url': category == 'Gallery' ? url : null, 'published': true,
-      });
-      title.clear(); description.clear();
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Content uploaded and published.')));
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload failed: ${e.toString()}')));
-    } finally { if (mounted) setState(() => busy = false); }
-  }
-  @override
-  void dispose() { title.dispose(); description.dispose(); super.dispose(); }
-  @override
-  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Admin Dashboard'), actions: [
-    IconButton(tooltip: 'Sign out', onPressed: () async { await Supabase.instance.client.auth.signOut(); if (context.mounted) Navigator.pop(context); }, icon: const Icon(Icons.logout))
-  ]), body: ListView(padding: const EdgeInsets.all(20), children: [
-    const Text('Manage devotional content', style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold, color: maroon)),
-    const SizedBox(height: 8), const Text('Upload photos, audio, PDFs and video links. Published items appear in the app.', style: TextStyle(color: brown)),
-    const SizedBox(height: 20),
-    TextField(controller: title, decoration: const InputDecoration(labelText: 'Content title')),
-    const SizedBox(height: 12),
-    TextField(controller: description, maxLines: 3, decoration: const InputDecoration(labelText: 'Description')),
-    const SizedBox(height: 12),
-    DropdownButtonFormField<String>(value: category, decoration: const InputDecoration(labelText: 'Category'),
-      items: categories.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(), onChanged: busy ? null : (v) { if (v != null) setState(() => category = v); }),
-    const SizedBox(height: 18),
-    FilledButton.icon(onPressed: busy ? null : upload, icon: const Icon(Icons.cloud_upload), label: Text(busy ? 'Uploading...' : 'Choose file & publish'),
-      style: FilledButton.styleFrom(backgroundColor: maroon)),
-    const SizedBox(height: 12),
-    const Text('Security note: administrator rights are verified from the signed-in account role and enforced again by Supabase Row Level Security.', style: TextStyle(fontSize: 12, color: brown)),
-  ]));
-}
-
-class EventsPage extends StatelessWidget {
-  const EventsPage({super.key});
-  Future<List<Map<String, dynamic>>> load() async {
-    if (!Supabase.instance.isInitialized) return [];
-    final data = await Supabase.instance.client.from('devotional_events').select().eq('published', true).order('event_date');
-    return List<Map<String, dynamic>>.from(data);
-  }
-  @override
-  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Events & Festivals')),
-    body: FutureBuilder<List<Map<String, dynamic>>>(future: load(), builder: (context, snap) {
-      if (!Supabase.instance.isInitialized) return const EmptyState(message: 'Events service is not connected yet.');
-      if (snap.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: champagne));
-      if (snap.hasError) return const EmptyState(message: 'Unable to load events right now.');
-      final rows = snap.data ?? [];
-      if (rows.isEmpty) return const EmptyState(message: 'Upcoming events will be announced here.');
-      return ListView.builder(padding: const EdgeInsets.all(16), itemCount: rows.length, itemBuilder: (_, i) {
-        final e = rows[i];
-        return Card(color: cardWhite, child: ListTile(leading: const Icon(Icons.event, color: maroon),
-          title: Text((e['title'] ?? '').toString()), subtitle: Text((e['event_date'] ?? '').toString() + ' • ' + (e['location'] ?? '').toString() + '\n' + (e['description'] ?? '').toString())));
-      });
-    }));
-}
-
-class SadhanaPage extends StatefulWidget {
-  const SadhanaPage({super.key});
-  @override
-  State<SadhanaPage> createState() => _SadhanaPageState();
-}
-class _SadhanaPageState extends State<SadhanaPage> {
-  Timer? timer;
-  int minutes = 15, remaining = 900;
-  bool running = false;
-  final completed = <String>[];
 
   void choose(int m) {
     timer?.cancel();
@@ -857,6 +586,8 @@ class _SadhanaPageState extends State<SadhanaPage> {
           running = false;
           completed.insert(0, DateTime.now().toString().substring(0, 16) + ' • ' + minutes.toString() + ' min');
         });
+        HapticFeedback.vibrate();
+        announceCompletion();
       } else {
         setState(() => remaining--);
       }
@@ -879,7 +610,7 @@ class _SadhanaPageState extends State<SadhanaPage> {
   String durationLabel(int m) => m < 60 ? '$m min' : (m % 60 == 0 ? '${m ~/ 60} hr' : '${m ~/ 60} hr ${m % 60} min');
 
   @override
-  void dispose() { timer?.cancel(); super.dispose(); }
+  void dispose() { timer?.cancel(); tts.stop(); super.dispose(); }
 
   @override
   Widget build(BuildContext context) => Scaffold(
