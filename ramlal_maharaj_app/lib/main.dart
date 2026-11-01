@@ -11,6 +11,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:pdfrx/pdfrx.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:video_player/video_player.dart';
 import 'firebase_options.dart';
 
 const ivory = Color(0xFFF8F3E8);
@@ -333,10 +334,70 @@ Future<void> openItem(BuildContext context, Map<String, dynamic> item) async {
     Navigator.push(context, MaterialPageRoute(builder: (_) => AudioPlayerPage(url: link, title: title)));
     return;
   }
+  final isVideo = category == 'video' || RegExp(r'\\.(mp4|m4v|mov|webm)(\\?|$)', caseSensitive: false).hasMatch(link);
+  if (isVideo) {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => InAppVideoPage(url: link, title: title)));
+    return;
+  }
   final uri = Uri.tryParse(link);
   if (uri == null || !await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Video link could not be opened.')));
+    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('This content link could not be opened.')));
   }
+}
+
+class InAppVideoPage extends StatefulWidget {
+  final String url, title;
+  const InAppVideoPage({super.key, required this.url, required this.title});
+  @override
+  State<InAppVideoPage> createState() => _InAppVideoPageState();
+}
+
+class _InAppVideoPageState extends State<InAppVideoPage> {
+  late final VideoPlayerController _controller;
+  String? _error;
+  bool _ready = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = VideoPlayerController.networkUrl(Uri.parse(widget.url))
+      ..initialize().then((_) {
+        if (mounted) setState(() => _ready = true);
+      }).catchError((Object error) {
+        if (mounted) setState(() => _error = 'Unable to load this video. Check the link or internet connection.');
+      });
+  }
+
+  String _time(Duration value) {
+    final minutes = value.inMinutes;
+    final seconds = value.inSeconds % 60;
+    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: Text(widget.title)),
+    body: Center(child: _error != null
+      ? Padding(padding: const EdgeInsets.all(24), child: Text(_error!, textAlign: TextAlign.center, style: const TextStyle(color: maroon)))
+      : !_ready
+        ? const CircularProgressIndicator(color: champagne)
+        : Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+            AspectRatio(aspectRatio: _controller.value.aspectRatio, child: VideoPlayer(_controller)),
+            VideoProgressIndicator(_controller, allowScrubbing: true, padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16), colors: const VideoProgressColors(playedColor: champagne, bufferedColor: paleGold, backgroundColor: ivory)),
+            Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              IconButton(onPressed: () => _controller.seekTo(_controller.value.position - const Duration(seconds: 10)), icon: const Icon(Icons.replay_10, color: brown), iconSize: 36),
+              IconButton(onPressed: () => setState(() { _controller.value.isPlaying ? _controller.pause() : _controller.play(); }), icon: Icon(_controller.value.isPlaying ? Icons.pause_circle : Icons.play_circle, color: maroon), iconSize: 58),
+              IconButton(onPressed: () => _controller.seekTo(_controller.value.position + const Duration(seconds: 10)), icon: const Icon(Icons.forward_10, color: brown), iconSize: 36),
+            ]),
+            Text('${_time(_controller.value.position)} / ${_time(_controller.value.duration)}', style: const TextStyle(color: brown)),
+          ])),
+  );
 }
 
 class AudioPlayerPage extends StatefulWidget {

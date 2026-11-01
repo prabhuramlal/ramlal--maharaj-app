@@ -1,47 +1,46 @@
 name: Build Ramlal Maharaj Android APK
 
 on:
-  push:
-    branches: [main, build/real-devotional-app]
   workflow_dispatch:
-
-permissions:
-  contents: read
+  push:
+    branches:
+      - main
+      - build/real-devotional-app
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: Checkout project
         uses: actions/checkout@v4
 
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
+          java-version: '17'
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
-          cache: true
 
       - name: Install dependencies
         working-directory: ramlal_maharaj_app
         run: flutter pub get
 
-      - name: Build release APK
+      - name: Check formatting
         working-directory: ramlal_maharaj_app
-        run: |
-          flutter build apk --release \
-            --dart-define=SUPABASE_URL=https://njivqobvdjwunkhwridx.supabase.co \
-            --dart-define=SUPABASE_PUBLISHABLE_KEY=sb_publishable_NJynrmTkUlqDAiGEpQ4yZQ_UrIfUFT_
+        run: dart format --output=none --set-exit-if-changed lib
+
+      - name: Build Android APK
+        working-directory: ramlal_maharaj_app
+        run: flutter build apk --release
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: Ramlal-Maharaj-APK
           path: ramlal_maharaj_app/build/app/outputs/flutter-apk/app-release.apk
-          if-no-files-found: error
+          retention-days: 14
