@@ -711,6 +711,7 @@ class SuperAdminUsersPage extends StatefulWidget {
 class _SuperAdminUsersPageState extends State<SuperAdminUsersPage> {
   bool loading = true, working = false;
   String? error;
+  String searchQuery = '';
   List<Map<String, dynamic>> users = [];
   @override
   void initState() { super.initState(); loadUsers(); }
@@ -754,13 +755,37 @@ class _SuperAdminUsersPageState extends State<SuperAdminUsersPage> {
       Text(error!, textAlign: TextAlign.center), const SizedBox(height: 12),
       FilledButton(onPressed: loadUsers, child: const Text('Retry')),
     ]));
+    final query = searchQuery.trim().toLowerCase();
+    final filteredUsers = users.where((u) {
+      final email = (u['email'] ?? '').toString().toLowerCase();
+      final id = (u['id'] ?? '').toString().toLowerCase();
+      final metadata = u['app_metadata'] is Map ? Map<String, dynamic>.from(u['app_metadata']) : <String, dynamic>{};
+      final role = (metadata['role'] ?? 'devotee').toString().toLowerCase();
+      return query.isEmpty || email.contains(query) || id.contains(query) || role.contains(query);
+    }).toList();
     return RefreshIndicator(onRefresh: loadUsers, child: ListView(padding: const EdgeInsets.all(16), children: [
       const Text('Super Admin • User Management', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: maroon)),
       const SizedBox(height: 6),
       const Text('Promote or revoke administrators and suspend or restore accounts. Server-side role checks protect every action.', style: TextStyle(color: brown)),
+      const SizedBox(height: 14),
+      TextField(
+        onChanged: (value) => setState(() => searchQuery = value),
+        decoration: InputDecoration(
+          hintText: 'Search by email, user ID or role',
+          prefixIcon: const Icon(Icons.search, color: champagne),
+          suffixIcon: searchQuery.isEmpty ? null : IconButton(
+            tooltip: 'Clear search', icon: const Icon(Icons.clear),
+            onPressed: () => setState(() => searchQuery = ''),
+          ),
+          filled: true, fillColor: cardWhite,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+        ),
+      ),
       const SizedBox(height: 12),
-      Text(users.length.toString() + ' registered accounts'),
-      ...users.map((u) {
+      Text('${filteredUsers.length} of ${users.length} registered accounts'),
+      if (filteredUsers.isEmpty)
+        const Padding(padding: EdgeInsets.symmetric(vertical: 32), child: Center(child: Text('No matching users found.'))),
+      ...filteredUsers.map((u) {
         final id = (u['id'] ?? '').toString();
         final email = (u['email'] ?? 'No email').toString();
         final metadata = u['app_metadata'] is Map ? Map<String, dynamic>.from(u['app_metadata']) : <String, dynamic>{};
