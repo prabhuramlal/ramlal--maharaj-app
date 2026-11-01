@@ -133,7 +133,12 @@ class MainScreen extends StatefulWidget {
 }
 class _MainScreenState extends State<MainScreen> {
   int index = 0;
-  final pages = const [HomePage(), DarshanPage(), MediaPage(), SadhanaPage(), ProfilePage()];
+  List<Widget> get pages => [const HomePage(), const DarshanPage(), const MediaPage(), const SadhanaPage(), const ProfilePage()];
+  @override
+  void initState() { super.initState(); appHindi.addListener(_languageChanged); }
+  void _languageChanged() { if (mounted) setState(() {}); }
+  @override
+  void dispose() { appHindi.removeListener(_languageChanged); super.dispose(); }
   @override
   Widget build(BuildContext context) => Scaffold(
     body: SafeArea(child: IndexedStack(index: index, children: pages)),
@@ -156,6 +161,7 @@ class HomePage extends StatelessWidget {
     ('Pravachan', Icons.mic_rounded), ('Satsang', Icons.groups_rounded),
     ('Gallery', Icons.photo_library_rounded), ('Events', Icons.event_rounded),
   ];
+  static const hindiFeatures = ['भजन', 'आरती', 'पुस्तकें', 'गुरु वाणी', 'प्रवचन', 'सत्संग', 'गैलरी', 'कार्यक्रम'];
   @override
   Widget build(BuildContext context) => CustomScrollView(slivers: [
     SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
@@ -198,7 +204,7 @@ class HomePage extends StatelessWidget {
             child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
               Container(width: 52, height: 52, decoration: const BoxDecoration(color: ivory, shape: BoxShape.circle),
                 child: Icon(item.$2, color: champagne, size: 28)),
-              const SizedBox(height: 10), Text(item.$1, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: brown)),
+              const SizedBox(height: 10), Text(appHindi.value ? hindiFeatures[i] : item.$1, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: brown)),
             ])));
       }, childCount: features.length),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, mainAxisSpacing: 13, crossAxisSpacing: 13, childAspectRatio: 1.25))),
