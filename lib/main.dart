@@ -684,16 +684,112 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
   });
 
   @override
-  Widget build(BuildContext context) => DefaultTabController(length: 3, child: Scaffold(
+  Widget build(BuildContext context) {
+    final isSuperAdmin = Supabase.instance.client.auth.currentUser?.appMetadata['role']?.toString() == 'super_admin';
+    final tabs = <Widget>[
+      const Tab(icon: Icon(Icons.cloud_upload_outlined), text: 'Upload'),
+      const Tab(icon: Icon(Icons.library_music_outlined), text: 'Manage Media'),
+      const Tab(icon: Icon(Icons.event_outlined), text: 'Events'),
+      if (isSuperAdmin) const Tab(icon: Icon(Icons.manage_accounts_outlined), text: 'Users'),
+    ];
+    final pages = <Widget>[uploadTab(), manageTab(), const EventsAdminPage(), if (isSuperAdmin) const SuperAdminUsersPage()];
+    return DefaultTabController(length: tabs.length, child: Scaffold(
     appBar: AppBar(title: const Text('Admin Portal'), actions: [
+
       IconButton(tooltip: 'Sign out', onPressed: () async { await Supabase.instance.client.auth.signOut(); if (context.mounted) Navigator.pop(context); }, icon: const Icon(Icons.logout)),
-    ], bottom: const TabBar(tabs: [
-      Tab(icon: Icon(Icons.cloud_upload_outlined), text: 'Upload'),
-      Tab(icon: Icon(Icons.library_music_outlined), text: 'Manage Media'),
-      Tab(icon: Icon(Icons.event_outlined), text: 'Events'),
-    ])),
-    body: TabBarView(children: [uploadTab(), manageTab(), const EventsAdminPage()]),
+    ], bottom: TabBar(isScrollable: true, tabs: tabs)),
+    body: TabBarView(children: pages),
   ));
+  }
+}
+
+class SuperAdminUsersPage extends StatefulWidget {
+  const SuperAdminUsersPage({super.key});
+  @override
+  State<SuperAdminUsersPage> createState() => _SuperAdminUsersPageState();
+}
+class _SuperAdminUsersPageState extends State<SuperAdminUsersPage> {
+  bool loading = true, working = false;
+  String? error;
+  List<Map<String, dynamic>> users = [];
+  @override
+  void initState() { super.initState(); loadUsers(); }
+
+  Future<void> loadUsers() async {
+    setState(() { loading = true; error = null; });
+    try {
+      final r = await Supabase.instance.client.functions.invoke('manage-users', body: {'action': 'list'});
+      if (r.status < 200 || r.status >= 300) throw Exception('Request failed: ' + r.status.toString());
+      users = List<Map<String, dynamic>>.from((r.data as Map)['users'] ?? []);
+    } catch (e) { error = e.toString(); }
+    if (mounted) setState(() => loading = false);
+  }
+
+  Future<void> updateUser(Map<String, dynamic> user, Map<String, dynamic> body, String prompt) async {
+    final ok = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
+      title: const Text('Confirm account change'),
+      content: Text(prompt + ' ' + (user['email'] ?? 'this account').toString()),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Confirm')),
+      ],
+    ));
+    if (ok != true || !mounted) return;
+    setState(() => working = true);
+    try {
+      final r = await Supabase.instance.client.functions.invoke('manage-users', body: body);
+      if (r.status < 200 || r.status >= 300) throw Exception(r.data.toString());
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Account updated.')));
+      await loadUsers();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Update failed: ' + e.toString())));
+    } finally { if (mounted) setState(() => working = false); }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final self = Supabase.instance.client.auth.currentUser?.id;
+    if (loading) return const Center(child: CircularProgressIndicator(color: champagne));
+    if (error != null) return Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+      Text(error!, textAlign: TextAlign.center), const SizedBox(height: 12),
+      FilledButton(onPressed: loadUsers, child: const Text('Retry')),
+    ]));
+    return RefreshIndicator(onRefresh: loadUsers, child: ListView(padding: const EdgeInsets.all(16), children: [
+      const Text('Super Admin • User Management', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: maroon)),
+      const SizedBox(height: 6),
+      const Text('Promote or revoke administrators and suspend or restore accounts. Server-side role checks protect every action.', style: TextStyle(color: brown)),
+      const SizedBox(height: 12),
+      Text(users.length.toString() + ' registered accounts'),
+      ...users.map((u) {
+        final id = (u['id'] ?? '').toString();
+        final email = (u['email'] ?? 'No email').toString();
+        final metadata = u['app_metadata'] is Map ? Map<String, dynamic>.from(u['app_metadata']) : <String, dynamic>{};
+        final role = (metadata['role'] ?? 'devotee').toString();
+        final banned = (u['banned_until'] ?? '').toString().isNotEmpty;
+        final protected = id == self || role == 'super_admin';
+        return Card(color: cardWhite, child: ListTile(
+          leading: const Icon(Icons.account_circle_outlined, color: champagne, size: 30),
+          title: Text(email),
+          subtitle: Text(role.toUpperCase() + (banned ? ' • SUSPENDED' : ' • ACTIVE')),
+          isThreeLine: false,
+          trailing: protected ? const Icon(Icons.verified_user_outlined, color: brown) : PopupMenuButton<String>(
+            enabled: !working,
+            onSelected: (v) {
+              if (v == 'admin' || v == 'devotee') {
+                updateUser(u, {'action': 'set_role', 'user_id': id, 'role': v}, v == 'admin' ? 'Grant admin access to' : 'Revoke admin access from');
+              } else {
+                updateUser(u, {'action': banned ? 'unban' : 'ban', 'user_id': id}, banned ? 'Restore access for' : 'Suspend');
+              }
+            },
+            itemBuilder: (_) => [
+              PopupMenuItem(value: role == 'admin' ? 'devotee' : 'admin', child: Text(role == 'admin' ? 'Revoke admin' : 'Make admin')),
+              PopupMenuItem(value: banned ? 'unban' : 'ban', child: Text(banned ? 'Restore account' : 'Suspend account')),
+            ],
+          ),
+        ));
+      }),
+    ]));
+  }
 }
 
 class EventsAdminPage extends StatefulWidget {
