@@ -177,7 +177,7 @@ class _ContentPageState extends State<ContentPage> {
                   ? ClipRRect(borderRadius: BorderRadius.circular(9), child: Image.network(imageUrl, width: 58, height: 58, fit: BoxFit.cover,
                       errorBuilder: (_, __, ___) => const SizedBox(width: 58, height: 58, child: Icon(Icons.image_not_supported, color: champagne))))
                   : const Icon(Icons.play_circle_outline, color: maroon),
-                title: Text((item['title'] ?? 'Devotional content').toString(), style: const TextStyle(fontWeight: FontWeight.w600, color: brown)),
+                title: isGallery ? const SizedBox.shrink() : Text((item['title'] ?? 'Devotional content').toString(), style: const TextStyle(fontWeight: FontWeight.w600, color: brown)),
                 subtitle: Text((item['description'] ?? '').toString(), maxLines: 2, overflow: TextOverflow.ellipsis),
                 trailing: Icon(isGallery ? Icons.zoom_in : Icons.open_in_new, color: champagne),
                 onTap: () => isGallery ? openGalleryImage(context, item) : openItem(context, item)));
@@ -199,7 +199,7 @@ void openGalleryImage(BuildContext context, Map<String, dynamic> item) {
   }
   Navigator.push(context, MaterialPageRoute(builder: (_) => GalleryImagePage(
     imageUrl: link,
-    title: (item['title'] ?? 'Guru Darshan').toString(),
+    title: '',
   )));
 }
 
@@ -209,7 +209,7 @@ class GalleryImagePage extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: const Color(0xFF211A18),
-    appBar: AppBar(backgroundColor: const Color(0xFF211A18), foregroundColor: Colors.white, title: Text(title)),
+    appBar: AppBar(backgroundColor: const Color(0xFF211A18), foregroundColor: Colors.white, title: title.isEmpty ? null : Text(title)),
     body: Center(child: InteractiveViewer(
       minScale: 0.7, maxScale: 4,
       child: Image.network(imageUrl, fit: BoxFit.contain,
@@ -385,7 +385,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
         fileOptions: FileOptions(upsert: false));
       final url = client.storage.from('prabhu').getPublicUrl(path);
       final contentTitle = category == 'Gallery'
-          ? 'गुरु दर्शन'
+          ? ''
           : (title.text.trim().isNotEmpty ? title.text.trim() : file.name);
       await client.from('devotional_content').insert({
         'title': contentTitle, 'category': category, 'description': description.text.trim(),
@@ -486,7 +486,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
             final isPhoto = item['category'] == 'Gallery';
             return Card(color: cardWhite, child: ListTile(
               leading: Icon(isPhoto ? Icons.image : Icons.perm_media, color: champagne),
-              title: Text(isPhoto ? 'Guru Darshan photo' : (item['title'] ?? 'Untitled').toString()),
+              title: Text(isPhoto ? 'Photo' : (item['title'] ?? 'Untitled').toString()),
               subtitle: Text('${item['category'] ?? 'Media'} • ${item['published'] == true ? 'Published' : 'Draft'}'),
               trailing: IconButton(tooltip: 'Remove media', icon: const Icon(Icons.delete_outline, color: Colors.red),
                 onPressed: busy ? null : () => removeContent(item)),
