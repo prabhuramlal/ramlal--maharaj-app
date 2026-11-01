@@ -188,10 +188,10 @@ class HomePage extends StatelessWidget {
           const Align(alignment: Alignment.bottomCenter, child: Padding(padding: EdgeInsets.only(bottom: 14), child: Text('जय गुरुदेव 🙏', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white, shadows: [Shadow(color: Colors.black54, blurRadius: 8)])))),
         ]))))),
     SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.fromLTRB(20, 15, 20, 14),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: const [
-        Text('जय गुरुदेव 🙏', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: maroon)),
-        SizedBox(height: 4), Text(appText('A place for devotion, wisdom and inner peace', 'भक्ति, ज्ञान और आत्मिक शांति का स्थान'), style: TextStyle(color: brown, fontSize: 13)),
-        SizedBox(height: 20), Text(appText('Explore devotion', 'दर्शन एवं भक्ति'), style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold, color: brown)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('जय गुरुदेव 🙏', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: maroon)),
+        const SizedBox(height: 4), Text(appText('A place for devotion, wisdom and inner peace', 'भक्ति, ज्ञान और आत्मिक शांति का स्थान'), style: TextStyle(color: brown, fontSize: 13)),
+        const SizedBox(height: 20), Text(appText('Explore devotion', 'दर्शन एवं भक्ति'), style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold, color: brown)),
       ]))),
     SliverPadding(padding: const EdgeInsets.symmetric(horizontal: 16), sliver: SliverGrid(
       delegate: SliverChildBuilderDelegate((context, i) {
