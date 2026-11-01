@@ -1361,7 +1361,41 @@ class _ProfilePageState extends State<ProfilePage> {
             const SizedBox(height: 5), const Text('ॐ गुरवे नमः', style: TextStyle(color: brown)),
           ])),
         const SizedBox(height: 18),
-        ProfileTile(icon: Icons.language, title: appText('App language • हिन्दी / English', 'ऐप की भाषा • हिन्दी / English'), subtitle: appText('Choose Hindi or English', 'हिन्दी या English चुनें'), onTap: () => showDialog<void>(context: context, builder: (dialogContext) => AlertDialog(title: Text(appText('App language', 'ऐप की भाषा')), content: Column(mainAxisSize: MainAxisSize.min, children: [ListTile(title: const Text('हिन्दी'), trailing: appHindi.value ? const Icon(Icons.check, color: maroon) : null, onTap: () async { appHindi.value = true; final p = await SharedPreferences.getInstance(); await p.setBool('app_language_hindi', true); if (dialogContext.mounted) { Navigator.pop(dialogContext); if (mounted) setState(() {}); } }), ListTile(title: const Text('English'), trailing: !appHindi.value ? const Icon(Icons.check, color: maroon) : null, onTap: () async { appHindi.value = false; final p = await SharedPreferences.getInstance(); await p.setBool('app_language_hindi', false); if (dialogContext.mounted) { Navigator.pop(dialogContext); if (mounted) setState(() {}); } })]))),
+        ProfileTile(
+          icon: Icons.language,
+          title: appText('App language • हिन्दी / English', 'ऐप की भाषा • हिन्दी / English'),
+          subtitle: appText('Choose Hindi or English', 'हिन्दी या English चुनें'),
+          onTap: () => showDialog<void>(
+            context: context,
+            builder: (dialogContext) => AlertDialog(
+              title: Text(appText('App language', 'ऐप की भाषा')),
+              content: Column(mainAxisSize: MainAxisSize.min, children: [
+                ListTile(
+                  title: const Text('हिन्दी'),
+                  trailing: appHindi.value ? const Icon(Icons.check, color: maroon) : null,
+                  onTap: () async {
+                    appHindi.value = true;
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.setBool('app_language_hindi', true);
+                    if (dialogContext.mounted) Navigator.pop(dialogContext);
+                    if (mounted) setState(() {});
+                  },
+                ),
+                ListTile(
+                  title: const Text('English'),
+                  trailing: !appHindi.value ? const Icon(Icons.check, color: maroon) : null,
+                  onTap: () async {
+                    appHindi.value = false;
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.setBool('app_language_hindi', false);
+                    if (dialogContext.mounted) Navigator.pop(dialogContext);
+                    if (mounted) setState(() {});
+                  },
+                ),
+              ]),
+            ),
+          ),
+        ),
         if (user == null)
           ProfileTile(icon: Icons.login, title: 'भक्त लॉगिन / Devotee Login', subtitle: 'Sign in or create a free account', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DevoteeAuthPage()))),
         if (user != null)
