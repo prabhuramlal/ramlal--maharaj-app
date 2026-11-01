@@ -668,6 +668,7 @@ class _SadhanaPageState extends State<SadhanaPage> {
 
   void reset() {
     timer?.cancel();
+    stopCompletionMusic();
     setState(() { running = false; remaining = minutes * 60; });
   }
 
