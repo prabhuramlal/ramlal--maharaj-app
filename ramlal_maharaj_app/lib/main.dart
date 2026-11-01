@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -369,7 +370,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Administrator permission required.')));
       return;
     }
-    if (title.text.trim().isEmpty) {
+    if (category != 'Gallery' && title.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter a title.')));
       return;
     }
@@ -382,8 +383,271 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       await client.storage.from('prabhu').uploadBinary(path, file.bytes!,
         fileOptions: FileOptions(upsert: false, contentType: file.extension == 'pdf' ? 'application/pdf' : null));
       final url = client.storage.from('prabhu').getPublicUrl(path);
+      final contentTitle = title.text.trim().isNotEmpty
+          ? title.text.trim()
+          : (category == 'Gallery'
+              ? file.name.replaceAll(RegExp(r'\\.[^.]+        'file_url': url, 'thumbnail_url': category == 'Gallery' ? url : null, 'published': true,
+      });
+      title.clear(); description.clear();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Content uploaded and published.')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload failed: ${e.toString()}')));
+    } finally { if (mounted) setState(() => busy = false); }
+  }
+  @override
+  void dispose() { title.dispose(); description.dispose(); super.dispose(); }
+  @override
+  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Admin Dashboard'), actions: [
+    IconButton(tooltip: 'Sign out', onPressed: () async { await Supabase.instance.client.auth.signOut(); if (context.mounted) Navigator.pop(context); }, icon: const Icon(Icons.logout))
+  ]), body: ListView(padding: const EdgeInsets.all(20), children: [
+    const Text('Manage devotional content', style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold, color: maroon)),
+    const SizedBox(height: 8), const Text('Upload photos, audio, PDFs and video links. Published items appear in the app.', style: TextStyle(color: brown)),
+    const SizedBox(height: 20),
+    if (category != 'Gallery') ...[
+      TextField(controller: title, decoration: const InputDecoration(labelText: 'Content title')),
+      const SizedBox(height: 12),
+    ] else
+      const Padding(
+        padding: EdgeInsets.only(bottom: 12),
+        child: Text('Photo title is optional. The image file name will be used automatically.', style: TextStyle(color: brown)),
+      ),
+    TextField(controller: description, maxLines: 3, decoration: const InputDecoration(labelText: 'Description')),
+    const SizedBox(height: 12),
+    DropdownButtonFormField<String>(value: category, decoration: const InputDecoration(labelText: 'Category'),
+      items: categories.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(), onChanged: busy ? null : (v) { if (v != null) setState(() => category = v); }),
+    const SizedBox(height: 18),
+    FilledButton.icon(onPressed: busy ? null : upload, icon: const Icon(Icons.cloud_upload), label: Text(busy ? 'Uploading...' : 'Choose file & publish'),
+      style: FilledButton.styleFrom(backgroundColor: maroon)),
+    const SizedBox(height: 12),
+    const Text('Security note: administrator rights are verified from the signed-in account role and enforced again by Supabase Row Level Security.', style: TextStyle(fontSize: 12, color: brown)),
+  ]));
+}
+
+class EventsPage extends StatelessWidget {
+  const EventsPage({super.key});
+  Future<List<Map<String, dynamic>>> load() async {
+    if (!Supabase.instance.isInitialized) return [];
+    final data = await Supabase.instance.client.from('devotional_events').select().eq('published', true).order('event_date');
+    return List<Map<String, dynamic>>.from(data);
+  }
+  @override
+  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Events & Festivals')),
+    body: FutureBuilder<List<Map<String, dynamic>>>(future: load(), builder: (context, snap) {
+      if (!Supabase.instance.isInitialized) return const EmptyState(message: 'Events service is not connected yet.');
+      if (snap.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: champagne));
+      if (snap.hasError) return const EmptyState(message: 'Unable to load events right now.');
+      final rows = snap.data ?? [];
+      if (rows.isEmpty) return const EmptyState(message: 'Upcoming events will be announced here.');
+      return ListView.builder(padding: const EdgeInsets.all(16), itemCount: rows.length, itemBuilder: (_, i) {
+        final e = rows[i];
+        return Card(color: cardWhite, child: ListTile(leading: const Icon(Icons.event, color: maroon),
+          title: Text((e['title'] ?? '').toString()), subtitle: Text((e['event_date'] ?? '').toString() + ' • ' + (e['location'] ?? '').toString() + '\n' + (e['description'] ?? '').toString())));
+      });
+    }));
+}
+
+class SadhanaPage extends StatefulWidget {
+  const SadhanaPage({super.key});
+  @override
+  State<SadhanaPage> createState() => _SadhanaPageState();
+}
+class _SadhanaPageState extends State<SadhanaPage> {
+  Timer? timer;
+  int minutes = 15, remaining = 900;
+  bool running = false;
+  final completed = <String>[];
+
+  void choose(int m) {
+    timer?.cancel();
+    setState(() { minutes = m; remaining = m * 60; running = false; });
+  }
+
+  Future<void> chooseCustomDuration() async {
+    final controller = TextEditingController();
+    final value = await showDialog<int>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Custom Sadhana Timer'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            labelText: 'Duration in minutes',
+            hintText: 'For example, 45',
+            helperText: 'Enter 1 to 1440 minutes (up to 24 hours)',
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () {
+              final parsed = int.tryParse(controller.text.trim());
+              if (parsed == null || parsed < 1 || parsed > 1440) {
+                ScaffoldMessenger.of(dialogContext).showSnackBar(
+                  const SnackBar(content: Text('Please enter 1 to 1440 minutes.')),
+                );
+                return;
+              }
+              Navigator.pop(dialogContext, parsed);
+            },
+            child: const Text('Set Timer'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (value != null && mounted) choose(value);
+  }
+
+  void startOrPause() {
+    if (running) {
+      timer?.cancel();
+      setState(() => running = false);
+      return;
+    }
+    if (remaining <= 0) remaining = minutes * 60;
+    setState(() => running = true);
+    timer?.cancel();
+    timer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) return;
+      if (remaining <= 1) {
+        t.cancel();
+        setState(() {
+          remaining = 0;
+          running = false;
+          completed.insert(0, DateTime.now().toString().substring(0, 16) + ' • ' + minutes.toString() + ' min');
+        });
+        SystemSound.play(SystemSoundType.alert);
+        HapticFeedback.vibrate();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Sadhana completed. ॐ गुरवे नमः'), duration: Duration(seconds: 4)),
+        );
+      } else {
+        setState(() => remaining--);
+      }
+    });
+  }
+
+  void reset() {
+    timer?.cancel();
+    setState(() { running = false; remaining = minutes * 60; });
+  }
+
+  String clock(int s) {
+    final h = s ~/ 3600;
+    final m = (s % 3600) ~/ 60;
+    final sec = s % 60;
+    if (h > 0) return h.toString().padLeft(2, '0') + ':' + m.toString().padLeft(2, '0') + ':' + sec.toString().padLeft(2, '0');
+    return m.toString().padLeft(2, '0') + ':' + sec.toString().padLeft(2, '0');
+  }
+
+  String durationLabel(int m) => m < 60 ? '$m min' : (m % 60 == 0 ? '${m ~/ 60} hr' : '${m ~/ 60} hr ${m % 60} min');
+
+  @override
+  void dispose() { timer?.cancel(); super.dispose(); }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Sadhana Timer')),
+    body: ListView(padding: const EdgeInsets.all(20), children: [
+      Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(color: cardWhite, borderRadius: BorderRadius.circular(24), border: Border.all(color: paleGold)),
+        child: Column(children: [
+          const Text('ॐ गुरवे नमः', style: TextStyle(color: maroon, fontSize: 22, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 22),
+          SizedBox(width: 210, height: 210, child: Stack(fit: StackFit.expand, children: [
+            CircularProgressIndicator(
+              value: minutes == 0 ? 0 : remaining / (minutes * 60),
+              strokeWidth: 9, backgroundColor: ivory, color: champagne,
+            ),
+            Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Text(clock(remaining), style: const TextStyle(fontSize: 39, fontWeight: FontWeight.bold, color: maroon)),
+              const Text('TIME REMAINING', style: TextStyle(fontSize: 10, letterSpacing: 1.2, color: brown)),
+            ])),
+          ])),
+          const SizedBox(height: 22),
+          const Align(alignment: Alignment.centerLeft, child: Text('Choose duration', style: TextStyle(fontWeight: FontWeight.w600, color: brown))),
+          const SizedBox(height: 10),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            ...[15, 30, 60, 120].map((m) => ChoiceChip(
+              label: Text(durationLabel(m)),
+              selected: minutes == m,
+              onSelected: running ? null : (_) => choose(m),
+              selectedColor: paleGold,
+            )),
+            ActionChip(
+              avatar: const Icon(Icons.edit, size: 17, color: maroon),
+              label: Text(minutes == 15 || minutes == 30 || minutes == 60 || minutes == 120 ? 'Custom' : durationLabel(minutes)),
+              backgroundColor: (minutes == 15 || minutes == 30 || minutes == 60 || minutes == 120) ? ivory : paleGold,
+              onPressed: running ? null : chooseCustomDuration,
+            ),
+          ]),
+          const SizedBox(height: 20),
+          Row(children: [
+            Expanded(child: FilledButton.icon(
+              onPressed: startOrPause,
+              icon: Icon(running ? Icons.pause : Icons.play_arrow),
+              label: Text(running ? 'Pause' : remaining == minutes * 60 ? 'Start' : 'Resume'),
+              style: FilledButton.styleFrom(backgroundColor: maroon),
+            )),
+            const SizedBox(width: 10),
+            OutlinedButton.icon(onPressed: reset, icon: const Icon(Icons.stop), label: const Text('Reset')),
+          ]),
+        ]),
+      ),
+      const SizedBox(height: 22),
+      const Text('Completed sessions', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: brown)),
+      if (completed.isEmpty)
+        const Padding(padding: EdgeInsets.only(top: 8), child: Text('Completed sessions will appear here during this app session.', style: TextStyle(color: brown)))
+      else
+        ...completed.map((s) => ListTile(leading: const Icon(Icons.check_circle_outline, color: champagne), title: Text(s))),
+    ]),
+  );
+}
+
+class ProfilePage extends StatelessWidget {
+  const ProfilePage({super.key});
+  @override
+  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Profile')),
+    body: ListView(padding: const EdgeInsets.all(20), children: [
+      Container(padding: const EdgeInsets.all(22), decoration: BoxDecoration(color: cardWhite, borderRadius: BorderRadius.circular(20), border: Border.all(color: paleGold)),
+        child: const Column(children: [
+          CircleAvatar(radius: 38, backgroundColor: ivory, child: Icon(Icons.person, size: 42, color: maroon)),
+          SizedBox(height: 12), Text('Welcome, Devotee', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: maroon)),
+          SizedBox(height: 5), Text('ॐ गुरवे नमः', style: TextStyle(color: brown)),
+        ])),
+      const SizedBox(height: 18),
+      ProfileTile(icon: Icons.favorite_outline, title: 'Favourites', subtitle: 'Your saved devotional items', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ContentPage(category: 'Favourites', title: 'Favourites')))),
+      const ProfileTile(icon: Icons.info_outline, title: 'About the App', subtitle: 'Yog Yogeshwar Mahaprabhu Shree Ramlal Ji Maharaj'),
+      const ProfileTile(icon: Icons.privacy_tip_outlined, title: 'Privacy', subtitle: 'Your practice is personal and private'),
+      ProfileTile(icon: Icons.admin_panel_settings_outlined, title: 'Admin Login', subtitle: 'For authorised content administrators',
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminLoginPage()))),
+    ]));
+}
+class ProfileTile extends StatelessWidget {
+  final IconData icon; final String title, subtitle; final VoidCallback? onTap;
+  const ProfileTile({super.key, required this.icon, required this.title, required this.subtitle, this.onTap});
+  @override
+  Widget build(BuildContext context) => Card(color: cardWhite, elevation: 0, child: ListTile(leading: Icon(icon, color: champagne),
+    title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600, color: brown)), subtitle: Text(subtitle),
+    trailing: const Icon(Icons.chevron_right), onTap: onTap));
+}
+class EmptyState extends StatelessWidget {
+  final String message;
+  const EmptyState({super.key, required this.message});
+  @override
+  Widget build(BuildContext context) => Center(child: Padding(padding: const EdgeInsets.all(28),
+    child: Column(mainAxisSize: MainAxisSize.min, children: [
+      const Icon(Icons.menu_book_outlined, color: champagne, size: 48), const SizedBox(height: 14),
+      Text(message, textAlign: TextAlign.center, style: const TextStyle(color: brown, fontSize: 15)),
+    ])));
+}
+), '').replaceAll('_', ' ')
+              : file.name);
       await client.from('devotional_content').insert({
-        'title': title.text.trim(), 'category': category, 'description': description.text.trim(),
+        'title': contentTitle, 'category': category, 'description': description.text.trim(),
         'file_url': url, 'thumbnail_url': category == 'Gallery' ? url : null, 'published': true,
       });
       title.clear(); description.clear();
