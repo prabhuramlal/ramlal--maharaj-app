@@ -144,7 +144,7 @@ class _MainScreenState extends State<MainScreen> {
     body: SafeArea(child: IndexedStack(index: index, children: pages)),
     bottomNavigationBar: NavigationBar(height: 68, selectedIndex: index, backgroundColor: cardWhite,
       indicatorColor: paleGold, onDestinationSelected: (v) => setState(() => index = v),
-      destinations: const [
+      destinations: [
         NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: appText('Home', 'होम')), 
         NavigationDestination(icon: Icon(Icons.self_improvement_outlined), selectedIcon: Icon(Icons.self_improvement), label: appText('Darshan', 'दर्शन')), 
         NavigationDestination(icon: Icon(Icons.play_circle_outline), selectedIcon: Icon(Icons.play_circle), label: appText('Media', 'मीडिया')), 
