@@ -254,7 +254,12 @@ class _ContentPageState extends State<ContentPage> {
                 leading: isGallery && imageUrl.isNotEmpty
                   ? ClipRRect(borderRadius: BorderRadius.circular(9), child: Image.network(imageUrl, width: 58, height: 58, fit: BoxFit.cover,
                       errorBuilder: (_, __, ___) => const SizedBox(width: 58, height: 58, child: Icon(Icons.image_not_supported, color: champagne))))
-                  : const Icon(Icons.play_circle_outline, color: maroon),
+                  : Icon(
+                      (item['file_url'] ?? '').toString().toLowerCase().split('?').first.endsWith('.pdf')
+                          ? Icons.picture_as_pdf_outlined
+                          : Icons.play_circle_outline,
+                      color: maroon,
+                    ),
                 title: isGallery ? const SizedBox.shrink() : Text((item['title'] ?? 'Devotional content').toString(), style: const TextStyle(fontWeight: FontWeight.w600, color: brown)),
                 subtitle: Text((item['description'] ?? '').toString(), maxLines: 2, overflow: TextOverflow.ellipsis),
                 trailing: isGallery ? const Icon(Icons.zoom_in, color: champagne) : Row(mainAxisSize: MainAxisSize.min, children: [
@@ -317,13 +322,15 @@ Future<void> openItem(BuildContext context, Map<String, dynamic> item) async {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Content link is not available.')));
     return;
   }
+  // Detect the actual file format before the devotional category. An Aarti
+  // entry may be a PDF booklet, not an audio track.
+  if (lower.endsWith('.pdf') || category == 'books' || category == 'book') {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => PdfReaderPage(url: link, title: title)));
+    return;
+  }
   if (category == 'bhajan' || category == 'aarti' || category == 'audio' ||
       lower.endsWith('.mp3') || lower.endsWith('.m4a') || lower.endsWith('.aac') || lower.endsWith('.wav')) {
     Navigator.push(context, MaterialPageRoute(builder: (_) => AudioPlayerPage(url: link, title: title)));
-    return;
-  }
-  if (category == 'books' || category == 'book' || lower.endsWith('.pdf')) {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => PdfReaderPage(url: link, title: title)));
     return;
   }
   final uri = Uri.tryParse(link);
@@ -1083,8 +1090,9 @@ class _DevoteeAuthPageState extends State<DevoteeAuthPage> {
       }
     } on AuthException catch (e) {
       if (mounted) setState(() => error = e.message);
-    } catch (_) {
-      if (mounted) setState(() => error = 'Google sign-in could not be completed. Check Google provider setup and try again.');
+    } catch (e) {
+      // Surface the actual platform/Supabase error so configuration failures can be diagnosed.
+      if (mounted) setState(() => error = 'Google sign-in failed: ${e.toString()}');
     } finally {
       if (mounted) setState(() => busy = false);
     }
