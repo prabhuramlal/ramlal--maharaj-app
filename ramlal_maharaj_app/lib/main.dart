@@ -953,25 +953,128 @@ class _SadhanaPageState extends State<SadhanaPage> {
   );
 }
 
-class ProfilePage extends StatelessWidget {
+class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
   @override
-  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Profile')),
-    body: ListView(padding: const EdgeInsets.all(20), children: [
-      Container(padding: const EdgeInsets.all(22), decoration: BoxDecoration(color: cardWhite, borderRadius: BorderRadius.circular(20), border: Border.all(color: paleGold)),
-        child: const Column(children: [
-          CircleAvatar(radius: 38, backgroundColor: ivory, child: Icon(Icons.person, size: 42, color: maroon)),
-          SizedBox(height: 12), Text('Welcome, Devotee', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: maroon)),
-          SizedBox(height: 5), Text('ॐ गुरवे नमः', style: TextStyle(color: brown)),
-        ])),
+  State<ProfilePage> createState() => _ProfilePageState();
+}
+class _ProfilePageState extends State<ProfilePage> {
+  @override
+  Widget build(BuildContext context) {
+    final client = Supabase.instance.isInitialized ? Supabase.instance.client : null;
+    final user = client?.auth.currentUser;
+    final role = user?.appMetadata['role']?.toString();
+    final isAdmin = role == 'admin' || role == 'super_admin';
+    return Scaffold(appBar: AppBar(title: const Text('Profile')),
+      body: ListView(padding: const EdgeInsets.all(20), children: [
+        Container(padding: const EdgeInsets.all(22), decoration: BoxDecoration(color: cardWhite, borderRadius: BorderRadius.circular(20), border: Border.all(color: paleGold)),
+          child: Column(children: [
+            const CircleAvatar(radius: 38, backgroundColor: ivory, child: Icon(Icons.person, size: 42, color: maroon)),
+            const SizedBox(height: 12),
+            Text(user?.email ?? 'Welcome, Devotee', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: maroon)),
+            const SizedBox(height: 5),
+            Text(user == null ? 'Guest access' : (isAdmin ? (role == 'super_admin' ? 'Super Administrator' : 'Administrator') : 'Devotee account'), style: const TextStyle(color: brown)),
+            const SizedBox(height: 5), const Text('ॐ गुरवे नमः', style: TextStyle(color: brown)),
+          ])),
+        const SizedBox(height: 18),
+        if (user == null)
+          ProfileTile(icon: Icons.login, title: 'Devotee Login / Sign Up', subtitle: 'Sign in or create a free account', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DevoteeAuthPage()))),
+        if (user != null)
+          ProfileTile(icon: Icons.logout, title: 'Sign Out', subtitle: 'Sign out of this account', onTap: () async {
+            await client!.auth.signOut();
+            if (mounted) setState(() {});
+          }),
+        ProfileTile(icon: Icons.favorite_outline, title: 'Favourites', subtitle: 'Your saved devotional items', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FavouritesPage()))),
+        const ProfileTile(icon: Icons.info_outline, title: 'About the App', subtitle: 'Yog Yogeshwar Mahaprabhu Shree Ramlal Ji Maharaj'),
+        const ProfileTile(icon: Icons.privacy_tip_outlined, title: 'Privacy', subtitle: 'Your practice is personal and private'),
+        if (isAdmin)
+          ProfileTile(icon: Icons.admin_panel_settings_outlined, title: 'Open Admin Portal', subtitle: 'Manage devotional content and events', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminDashboardPage()))),
+        if (user == null)
+          ProfileTile(icon: Icons.admin_panel_settings_outlined, title: 'Admin Login', subtitle: 'For authorised content administrators', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminLoginPage()))),
+      ]));
+  }
+}
+
+class DevoteeAuthPage extends StatefulWidget {
+  const DevoteeAuthPage({super.key});
+  @override
+  State<DevoteeAuthPage> createState() => _DevoteeAuthPageState();
+}
+class _DevoteeAuthPageState extends State<DevoteeAuthPage> {
+  final email = TextEditingController();
+  final password = TextEditingController();
+  bool creating = false, busy = false, obscure = true;
+  String? message, error;
+
+  Future<void> submit() async {
+    if (!Supabase.instance.isInitialized) {
+      setState(() => error = 'Account service is not configured yet.');
+      return;
+    }
+    if (email.text.trim().isEmpty || password.text.length < 6) {
+      setState(() => error = 'Enter a valid email and a password with at least 6 characters.');
+      return;
+    }
+    setState(() { busy = true; error = null; message = null; });
+    try {
+      final auth = Supabase.instance.client.auth;
+      if (creating) {
+        final result = await auth.signUp(email: email.text.trim(), password: password.text);
+        if (result.session == null) {
+          setState(() => message = 'Account created. Please verify your email, then sign in.');
+        } else if (mounted) {
+          Navigator.pop(context);
+        }
+      } else {
+        await auth.signInWithPassword(email: email.text.trim(), password: password.text);
+        if (mounted) Navigator.pop(context);
+      }
+    } on AuthException catch (e) {
+      if (mounted) setState(() => error = e.message);
+    } catch (_) {
+      if (mounted) setState(() => error = 'Unable to complete sign-in. Please try again.');
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> resetPassword() async {
+    if (!Supabase.instance.isInitialized || email.text.trim().isEmpty) {
+      setState(() => error = 'Enter your email address first.');
+      return;
+    }
+    try {
+      await Supabase.instance.client.auth.resetPasswordForEmail(email.text.trim());
+      if (mounted) setState(() => message = 'Password reset email requested. Check your inbox.');
+    } on AuthException catch (e) {
+      if (mounted) setState(() => error = e.message);
+    }
+  }
+
+  @override
+  void dispose() { email.dispose(); password.dispose(); super.dispose(); }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: Text(creating ? 'Create Devotee Account' : 'Devotee Login')),
+    body: ListView(padding: const EdgeInsets.all(22), children: [
+      const Icon(Icons.self_improvement, color: maroon, size: 64),
+      const SizedBox(height: 12),
+      const Text('Your devotional journey', textAlign: TextAlign.center, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: maroon)),
+      const SizedBox(height: 22),
+      TextField(controller: email, keyboardType: TextInputType.emailAddress, autocorrect: false, decoration: const InputDecoration(labelText: 'Email address', prefixIcon: Icon(Icons.email_outlined))),
+      const SizedBox(height: 12),
+      TextField(controller: password, obscureText: obscure, decoration: InputDecoration(labelText: 'Password (minimum 6 characters)', prefixIcon: const Icon(Icons.lock_outline), suffixIcon: IconButton(onPressed: () => setState(() => obscure = !obscure), icon: Icon(obscure ? Icons.visibility : Icons.visibility_off)))),
+      if (error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(error!, style: const TextStyle(color: Colors.red))),
+      if (message != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(message!, style: const TextStyle(color: brown))),
       const SizedBox(height: 18),
-      ProfileTile(icon: Icons.favorite_outline, title: 'Favourites', subtitle: 'Your saved devotional items', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FavouritesPage()))),
-      const ProfileTile(icon: Icons.info_outline, title: 'About the App', subtitle: 'Yog Yogeshwar Mahaprabhu Shree Ramlal Ji Maharaj'),
-      const ProfileTile(icon: Icons.privacy_tip_outlined, title: 'Privacy', subtitle: 'Your practice is personal and private'),
-      ProfileTile(icon: Icons.admin_panel_settings_outlined, title: 'Admin Login', subtitle: 'For authorised content administrators',
-        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminLoginPage()))),
+      FilledButton(onPressed: busy ? null : submit, style: FilledButton.styleFrom(backgroundColor: maroon), child: Text(busy ? 'Please wait...' : (creating ? 'Create Free Account' : 'Sign In'))),
+      if (!creating) TextButton(onPressed: busy ? null : resetPassword, child: const Text('Forgot password?')),
+      TextButton(onPressed: busy ? null : () => setState(() { creating = !creating; error = null; message = null; }), child: Text(creating ? 'Already have an account? Sign in' : 'New here? Create a free account')),
+      const SizedBox(height: 8),
+      const Text('You can continue using the app as a guest without creating an account. Phone/SMS OTP sign-in is not used.', textAlign: TextAlign.center, style: TextStyle(color: brown, fontSize: 12)),
     ]));
 }
+
 class ProfileTile extends StatelessWidget {
   final IconData icon; final String title, subtitle; final VoidCallback? onTap;
   const ProfileTile({super.key, required this.icon, required this.title, required this.subtitle, this.onTap});
