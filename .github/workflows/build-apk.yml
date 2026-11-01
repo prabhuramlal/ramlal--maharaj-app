@@ -2,7 +2,7 @@ name: Build Ramlal Maharaj Android APK
 
 on:
   push:
-    branches: [main]
+    branches: [main, build/real-devotional-app]
   workflow_dispatch:
 
 permissions:
