@@ -1,15 +1,7 @@
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-    <path android:fillColor="#6B2638" android:pathData="M0,0h108v108h-108z"/>
-    <path android:fillColor="#C6A15B" android:pathData="M54,7A47,47 0,1 0,54 101A47,47 0,1 0,54 7M54,13A41,41 0,1 1,54 95A41,41 0,1 1,54 13"/>
-    <path android:fillColor="#F8F3E8" android:pathData="M54,23a10,10 0,1 0,0 20a10,10 0,1 0,0 -20"/>
-    <path android:fillColor="#C6A15B" android:pathData="M49,44h10l4,14l-9,8l-9,-8z"/>
-    <path android:fillColor="#F8F3E8" android:pathData="M49,46h10l-2,14h-6z"/>
-    <path android:fillColor="#C6A15B" android:pathData="M43,57L31,67l-7,12l5,3l11,-12l9,-5zM65,57l12,10l7,12l-5,3l-11,-12l-9,-5z"/>
-    <path android:fillColor="#C6A15B" android:pathData="M50,63L38,72l-12,7l4,6l18,-5l6,-8l6,8l18,5l4,-6l-12,-7l-12,-9z"/>
-    <path android:fillColor="#F8F3E8" android:pathData="M20,84h68v5h-68z"/>
-    <path android:fillColor="#C6A15B" android:pathData="M27,91h54v3h-54z"/>
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#6B2638" android:pathData="M54,0A54,54 0,1 0,54 108A54,54 0,1 0,54 0"/>
+    <path android:fillColor="#C6A15B" android:strokeColor="#EAD8B4" android:strokeWidth="1.5" android:fillType="nonZero" android:pathData="M54,5A49,49 0,1 0,54 103A49,49 0,1 0,54 5M54,9A45,45 0,1 1,54 99A45,45 0,1 1,54 9"/>
+    <group android:translateX="3" android:translateY="90" android:scaleX="0.09" android:scaleY="-0.09">
+        <path android:fillColor="#FFE6A8" android:pathData="M570 743Q546 743 532 756.5Q518 770 518 797Q518 824 532 837.5Q546 851 570 851Q621 851 621 797Q621 743 570 743ZM594 605Q501 605 446.5 658Q392 711 367 792L433 815Q451 756 484.5 725Q518 694 572 694Q628 694 660.5 728.5Q693 763 704 827L817 797Q798 712 743.5 658.5Q689 605 594 605ZM349 4Q251 4 178.5 77Q106 150 49 299L109 323Q151 223 200.5 172.5Q250 122 312 122Q357 122 383.5 146.5Q410 171 410 209Q410 253 378 292Q343 273 294 256L234 367Q323 393 365 420.5Q407 448 407 477Q407 498 392 509.5Q377 521 352 521Q327 521 293.5 510.5Q260 500 222 481L162 598Q231 632 304 632Q346 632 382.5 613.5Q419 595 445 563Q465 538 477 507Q489 476 489 442Q489 381 445 338Q477 338 499 353Q521 368 536.5 391Q552 414 566.5 440Q581 466 598 489Q615 512 639 526.5Q663 541 699 541Q740 541 776.5 518.5Q813 496 841 458Q867 423 882.5 378.5Q898 334 898 284Q898 197 857 143Q816 89 747 89Q692 89 645.5 122Q599 155 562 209L609 248Q632 223 654.5 210Q677 197 703 197Q750 197 776.5 237.5Q803 278 803 335Q803 377 785 406Q767 435 737 435Q712 435 694.5 417.5Q677 400 662.5 374Q648 348 630 322Q612 296 585 278.5Q558 261 517 261Q490 261 464 269Q465 267 467 265Q512 210 512 146Q512 83 466 43.5Q420 4 349 4Z"/>
+    </group>
 </vector>
