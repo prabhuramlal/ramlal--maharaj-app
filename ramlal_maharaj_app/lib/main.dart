@@ -418,7 +418,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       return;
     }
     if (category == 'bhajan' || category == 'aarti' || category == 'audio' || category == 'sadhana music' ||
-        RegExp(r'\\.(mp3|m4a|aac|wav|ogg)(\\?|$)', caseSensitive: false).hasMatch(url)) {
+        RegExp(r'\.(mp3|m4a|aac|wav|ogg)(\?|$)', caseSensitive: false).hasMatch(url)) {
       Navigator.push(context, MaterialPageRoute(builder: (_) => AudioPlayerPage(url: url, title: (item['title'] ?? 'Audio Preview').toString())));
       return;
     }
@@ -433,7 +433,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     }
   }
 
-  bool _isImageUrl(String url) => RegExp(r'\\.(png|jpe?g|webp|gif)(\\?|$)', caseSensitive: false).hasMatch(url);
+  bool _isImageUrl(String url) => RegExp(r'\.(png|jpe?g|webp|gif)(\?|$)', caseSensitive: false).hasMatch(url);
 
   Future<void> removeContent(Map<String, dynamic> item) async {
     final id = item['id'];
@@ -506,15 +506,125 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
   });
 
   @override
-  Widget build(BuildContext context) => DefaultTabController(length: 2, child: Scaffold(
+  Widget build(BuildContext context) => DefaultTabController(length: 3, child: Scaffold(
     appBar: AppBar(title: const Text('Admin Portal'), actions: [
       IconButton(tooltip: 'Sign out', onPressed: () async { await Supabase.instance.client.auth.signOut(); if (context.mounted) Navigator.pop(context); }, icon: const Icon(Icons.logout)),
     ], bottom: const TabBar(tabs: [
       Tab(icon: Icon(Icons.cloud_upload_outlined), text: 'Upload'),
       Tab(icon: Icon(Icons.library_music_outlined), text: 'Manage Media'),
+      Tab(icon: Icon(Icons.event_outlined), text: 'Events'),
     ])),
-    body: TabBarView(children: [uploadTab(), manageTab()]),
+    body: TabBarView(children: [uploadTab(), manageTab(), const EventsAdminPage()]),
   ));
+}
+
+class EventsAdminPage extends StatefulWidget {
+  const EventsAdminPage({super.key});
+  @override
+  State<EventsAdminPage> createState() => _EventsAdminPageState();
+}
+class _EventsAdminPageState extends State<EventsAdminPage> {
+  Future<List<Map<String, dynamic>>> load() async {
+    final rows = await Supabase.instance.client.from('devotional_events').select().order('event_date');
+    return List<Map<String, dynamic>>.from(rows);
+  }
+  Future<void> editEvent([Map<String, dynamic>? event]) async {
+    final title = TextEditingController(text: (event?['title'] ?? '').toString());
+    final description = TextEditingController(text: (event?['description'] ?? '').toString());
+    final location = TextEditingController(text: (event?['location'] ?? '').toString());
+    DateTime selectedDate = DateTime.tryParse((event?['event_date'] ?? '').toString()) ?? DateTime.now();
+    bool published = event?['published'] == true;
+    final result = await showDialog<bool>(context: context, builder: (dialogContext) => StatefulBuilder(
+      builder: (dialogContext, setDialogState) => AlertDialog(
+        title: Text(event == null ? 'Add event' : 'Edit event'),
+        content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(controller: title, decoration: const InputDecoration(labelText: 'Event title')),
+          TextField(controller: description, maxLines: 3, decoration: const InputDecoration(labelText: 'Description')),
+          TextField(controller: location, decoration: const InputDecoration(labelText: 'Location')),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: () async {
+              final picked = await showDatePicker(context: dialogContext, initialDate: selectedDate, firstDate: DateTime(2020), lastDate: DateTime(2100));
+              if (picked != null) setDialogState(() => selectedDate = picked);
+            },
+            icon: const Icon(Icons.calendar_month),
+            label: Text('${selectedDate.year}-${selectedDate.month.toString().padLeft(2, '0')}-${selectedDate.day.toString().padLeft(2, '0')}'),
+          ),
+          SwitchListTile(title: const Text('Published'), value: published, onChanged: (v) => setDialogState(() => published = v)),
+        ])),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () {
+            if (title.text.trim().isEmpty) {
+              ScaffoldMessenger.of(dialogContext).showSnackBar(const SnackBar(content: Text('Enter an event title.')));
+              return;
+            }
+            Navigator.pop(dialogContext, true);
+          }, child: const Text('Save')),
+        ],
+      ),
+    ));
+    if (result == true && mounted) {
+      try {
+        final data = {
+          'title': title.text.trim(), 'description': description.text.trim(), 'location': location.text.trim(),
+          'event_date': '${selectedDate.year.toString().padLeft(4, '0')}-${selectedDate.month.toString().padLeft(2, '0')}-${selectedDate.day.toString().padLeft(2, '0')}',
+          'published': published,
+        };
+        if (event == null) {
+          await Supabase.instance.client.from('devotional_events').insert(data);
+        } else {
+          await Supabase.instance.client.from('devotional_events').update(data).eq('id', event['id']);
+        }
+        if (mounted) { setState(() {}); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Event saved.'))); }
+      } catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not save event: $e')));
+      }
+    }
+    title.dispose(); description.dispose(); location.dispose();
+  }
+  Future<void> deleteEvent(Map<String, dynamic> event) async {
+    final yes = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
+      title: const Text('Delete event?'),
+      content: Text('Remove "${event['title'] ?? 'this event'}" from the events list?'),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+        FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Delete')),
+      ],
+    ));
+    if (yes != true) return;
+    try {
+      await Supabase.instance.client.from('devotional_events').delete().eq('id', event['id']);
+      if (mounted) setState(() {});
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not delete event: $e')));
+    }
+  }
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    floatingActionButton: FloatingActionButton.extended(backgroundColor: maroon, foregroundColor: Colors.white,
+      onPressed: () => editEvent(), icon: const Icon(Icons.add), label: const Text('Add event')),
+    body: FutureBuilder<List<Map<String, dynamic>>>(future: load(), builder: (context, snapshot) {
+      if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: champagne));
+      if (snapshot.hasError) return Center(child: Text('Unable to load events: ${snapshot.error}'));
+      final rows = snapshot.data ?? [];
+      if (rows.isEmpty) return const EmptyState(message: 'No events have been added yet. Tap Add event to create one.');
+      return RefreshIndicator(onRefresh: () async { setState(() {}); }, child: ListView.builder(
+        padding: const EdgeInsets.all(12), itemCount: rows.length, itemBuilder: (context, i) {
+          final e = rows[i];
+          return Card(color: cardWhite, child: ListTile(
+            leading: const Icon(Icons.event, color: champagne),
+            title: Text((e['title'] ?? '').toString(), style: const TextStyle(color: brown)),
+            subtitle: Text('${e['event_date'] ?? ''} • ${e['published'] == true ? 'Published' : 'Draft'}'),
+            trailing: Wrap(mainAxisSize: MainAxisSize.min, children: [
+              IconButton(tooltip: 'Edit event', icon: const Icon(Icons.edit_outlined, color: maroon), onPressed: () => editEvent(e)),
+              IconButton(tooltip: 'Delete event', icon: const Icon(Icons.delete_outline, color: Colors.red), onPressed: () => deleteEvent(e)),
+            ]),
+          ));
+        },
+      ));
+    }),
+  );
 }
 
 class EventsPage extends StatelessWidget {
