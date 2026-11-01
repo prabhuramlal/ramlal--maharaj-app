@@ -75,7 +75,7 @@ class WelcomeGate extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 28),
       child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
         Container(width: 112, height: 112, decoration: BoxDecoration(shape: BoxShape.circle, color: paleGold, border: Border.all(color: champagne, width: 2)),
-          child: const Icon(Icons.temple_hindu_rounded, color: maroon, size: 66)),
+          child: ClipOval(child: Image.asset('assets/images/gurudev_logo_png.jpeg', fit: BoxFit.cover))),
         const SizedBox(height: 26),
         const Text('जय गुरुदेव 🙏', style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: maroon)),
         const SizedBox(height: 10),
@@ -153,7 +153,7 @@ class HomePage extends StatelessWidget {
     SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
       child: Row(children: [
         Container(width: 48, height: 48, decoration: BoxDecoration(shape: BoxShape.circle, color: paleGold, border: Border.all(color: champagne)),
-          child: const Icon(Icons.temple_hindu_rounded, color: maroon, size: 28)),
+          child: ClipOval(child: Image.asset('assets/images/gurudev_logo_png.jpeg', fit: BoxFit.cover))),
         const SizedBox(width: 12),
         const Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('Yog Yogeshwar', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: maroon)),
@@ -168,12 +168,11 @@ class HomePage extends StatelessWidget {
           gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight,
             colors: [Color(0xFFFFF9ED), Color(0xFFEAD8B4), Color(0xFFFFFDF7)]),
           boxShadow: [BoxShadow(color: champagne.withValues(alpha: .16), blurRadius: 16, offset: const Offset(0, 5))]),
-        child: const Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Icon(Icons.temple_hindu_rounded, size: 55, color: maroon), SizedBox(height: 12),
-          Text('श्री महाप्रभु जी महाराज', style: TextStyle(fontSize: 23, fontWeight: FontWeight.bold, color: maroon)),
-          SizedBox(height: 8), Text('ॐ गुरवे नमः', style: TextStyle(fontSize: 20, color: brown, fontWeight: FontWeight.w600)),
-          SizedBox(height: 7), Text('गुरु कृपा • भक्ति • साधना', style: TextStyle(color: brown, fontSize: 12)),
-        ])))),
+        child: ClipRRect(borderRadius: BorderRadius.circular(23), child: Stack(fit: StackFit.expand, children: [
+          Image.asset('assets/images/gurudev_logo_png.jpeg', fit: BoxFit.cover),
+          DecoratedBox(decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Colors.transparent, Colors.black.withValues(alpha: .58)]))),
+          const Align(alignment: Alignment.bottomCenter, child: Padding(padding: EdgeInsets.only(bottom: 14), child: Text('जय गुरुदेव 🙏', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white, shadows: [Shadow(color: Colors.black54, blurRadius: 8)])))),
+        ]))))),
     SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.fromLTRB(20, 15, 20, 14),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: const [
         Text('जय गुरुदेव 🙏', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: maroon)),
