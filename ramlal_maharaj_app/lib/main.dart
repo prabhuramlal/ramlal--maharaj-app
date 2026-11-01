@@ -258,7 +258,7 @@ class _AudioPlayerPageState extends State<AudioPlayerPage> {
   @override
   void initState() {
     super.initState();
-    player.setUrl(widget.url).catchError((e) { if (mounted) setState(() => error = 'Unable to play this audio. Please check the media file.'); });
+    player.setUrl(widget.url).then((_) {}, onError: (e) { if (mounted) setState(() => error = 'Unable to play this audio. Please check the media file.'); });
   }
   @override
   void dispose() { player.dispose(); super.dispose(); }
