@@ -12,6 +12,9 @@ import 'package:file_picker/file_picker.dart';
 import 'package:pdfrx/pdfrx.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:video_player/video_player.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:timezone/data/latest.dart' as tzdata;
+import 'package:timezone/timezone.dart' as tz;
 import 'firebase_options.dart';
 
 const ivory = Color(0xFFF8F3E8);
@@ -21,8 +24,29 @@ const brown = Color(0xFF704B2B);
 const cardWhite = Color(0xFFFFFEFA);
 const paleGold = Color(0xFFE9D9B8);
 
+final FlutterLocalNotificationsPlugin sadhanaNotifications = FlutterLocalNotificationsPlugin();
+const int sadhanaAlarmNotificationId = 707;
+
+Future<void> initializeSadhanaNotifications() async {
+  tzdata.initializeTimeZones();
+  tz.setLocalLocation(tz.getLocation('Asia/Kolkata'));
+  const settings = InitializationSettings(android: AndroidInitializationSettings('@mipmap/ic_launcher'));
+  await sadhanaNotifications.initialize(settings);
+  const channel = AndroidNotificationChannel('sadhana_completion_bell', 'Sadhana completion bell', description: 'Temple bell when Sadhana finishes', importance: Importance.max, sound: RawResourceAndroidNotificationSound('temple_bell'), playSound: true);
+  await sadhanaNotifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()?.createNotificationChannel(channel);
+}
+
+Future<void> scheduleSadhanaBell(DateTime endAt) async {
+  final android = sadhanaNotifications.resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>();
+  await android?.requestNotificationsPermission();
+  await android?.requestExactAlarmsPermission();
+  const details = NotificationDetails(android: AndroidNotificationDetails('sadhana_completion_bell', 'Sadhana completion bell', channelDescription: 'Temple bell when Sadhana finishes', importance: Importance.max, priority: Priority.max, playSound: true, sound: RawResourceAndroidNotificationSound('temple_bell')));
+  await sadhanaNotifications.zonedSchedule(sadhanaAlarmNotificationId, 'Sadhana completed', 'Your meditation session is complete. जय गुरुदेव 🙏', tz.TZDateTime.from(endAt, tz.local), details, androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle);
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  try { await initializeSadhanaNotifications(); } catch (_) {}
   try { await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform); } catch (_) {}
   const url = String.fromEnvironment('SUPABASE_URL');
   const key = String.fromEnvironment('SUPABASE_PUBLISHABLE_KEY');
@@ -892,6 +916,7 @@ class _SadhanaPageState extends State<SadhanaPage> {
     final seconds = deadline.difference(DateTime.now()).inSeconds;
     if (seconds <= 0) {
       await prefs.remove(_deadlineKey);
+      await sadhanaNotifications.cancel(sadhanaAlarmNotificationId);
       if (!mounted) return;
       setState(() {
         remaining = 0; running = false; _endsAt = null;
@@ -916,6 +941,7 @@ class _SadhanaPageState extends State<SadhanaPage> {
         t.cancel();
         final prefs = await SharedPreferences.getInstance();
         await prefs.remove(_deadlineKey);
+        await sadhanaNotifications.cancel(sadhanaAlarmNotificationId);
         if (!mounted) return;
         setState(() {
           remaining = 0; running = false; _endsAt = null;
@@ -942,6 +968,14 @@ class _SadhanaPageState extends State<SadhanaPage> {
 
   Future<void> playCompletionMusic() async {
     final url = completionMusicUrl;
+    try {
+      await completionPlayer?.stop();
+      completionPlayer ??= AudioPlayer();
+      await completionPlayer!.setAsset('assets/sounds/temple_bell.wav');
+      await completionPlayer!.play();
+      if (mounted) setState(() => musicPlaying = true);
+    } catch (_) {}
+    if (url == null || url.isEmpty) return;
     if (url == null || url.isEmpty) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please ask an admin to upload the Sadhana completion music.')));
@@ -1018,12 +1052,15 @@ class _SadhanaPageState extends State<SadhanaPage> {
       timer?.cancel();
       _endsAt = null;
       SharedPreferences.getInstance().then((p) => p.remove(_deadlineKey));
+      sadhanaNotifications.cancel(sadhanaAlarmNotificationId);
       setState(() => running = false);
       return;
     }
     if (remaining <= 0) remaining = minutes * 60;
     _endsAt = DateTime.now().add(Duration(seconds: remaining));
-    SharedPreferences.getInstance().then((p) => p.setInt(_deadlineKey!, _endsAt!.millisecondsSinceEpoch));
+    final endAt = _endsAt!;
+    SharedPreferences.getInstance().then((p) => p.setInt(_deadlineKey, endAt.millisecondsSinceEpoch));
+    scheduleSadhanaBell(endAt).catchError((_) {});
     setState(() => running = true);
     _tickFromDeadline();
   }
@@ -1032,6 +1069,7 @@ class _SadhanaPageState extends State<SadhanaPage> {
     timer?.cancel();
     _endsAt = null;
     SharedPreferences.getInstance().then((p) => p.remove(_deadlineKey));
+    sadhanaNotifications.cancel(sadhanaAlarmNotificationId);
     stopCompletionMusic();
     setState(() { running = false; remaining = minutes * 60; });
   }
