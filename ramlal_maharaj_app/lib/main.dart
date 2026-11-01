@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
@@ -8,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:pdfrx/pdfrx.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'firebase_options.dart';
 
 const ivory = Color(0xFFF8F3E8);
@@ -148,6 +150,29 @@ class ContentPage extends StatefulWidget {
 }
 class _ContentPageState extends State<ContentPage> {
   String search = '';
+  Set<String> favouriteIds = {};
+  @override
+  void initState() { super.initState(); _loadFavouriteIds(); }
+  Future<void> _loadFavouriteIds() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) setState(() => favouriteIds = (prefs.getStringList('favourite_content_ids') ?? []).toSet());
+  }
+  Future<void> _toggleFavourite(Map<String, dynamic> item) async {
+    final id = (item['id'] ?? '').toString();
+    if (id.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getStringList('favourite_content') ?? [];
+    final entries = saved.map((v) {
+      try { return Map<String, dynamic>.from(jsonDecode(v)); } catch (_) { return <String, dynamic>{}; }
+    }).where((e) => e['id'] != null).toList();
+    if (entries.any((e) => e['id'].toString() == id)) {
+      entries.removeWhere((e) => e['id'].toString() == id);
+    } else { entries.add(Map<String, dynamic>.from(item)); }
+    await prefs.setStringList('favourite_content', entries.map((e) => jsonEncode(e)).toList());
+    final ids = entries.map((e) => e['id'].toString()).toSet();
+    await prefs.setStringList('favourite_content_ids', ids.toList());
+    if (mounted) setState(() => favouriteIds = ids);
+  }
   Future<List<Map<String, dynamic>>> load() async {
     if (!Supabase.instance.isInitialized) return [];
     final rows = await Supabase.instance.client.from('devotional_content').select()
@@ -180,7 +205,14 @@ class _ContentPageState extends State<ContentPage> {
                   : const Icon(Icons.play_circle_outline, color: maroon),
                 title: isGallery ? const SizedBox.shrink() : Text((item['title'] ?? 'Devotional content').toString(), style: const TextStyle(fontWeight: FontWeight.w600, color: brown)),
                 subtitle: Text((item['description'] ?? '').toString(), maxLines: 2, overflow: TextOverflow.ellipsis),
-                trailing: Icon(isGallery ? Icons.zoom_in : Icons.open_in_new, color: champagne),
+                trailing: isGallery ? const Icon(Icons.zoom_in, color: champagne) : Row(mainAxisSize: MainAxisSize.min, children: [
+                  IconButton(
+                    tooltip: favouriteIds.contains((item['id'] ?? '').toString()) ? 'Remove from favourites' : 'Add to favourites',
+                    onPressed: () => _toggleFavourite(item),
+                    icon: Icon(favouriteIds.contains((item['id'] ?? '').toString()) ? Icons.favorite : Icons.favorite_border, color: maroon),
+                  ),
+                  const Icon(Icons.open_in_new, color: champagne),
+                ]),
                 onTap: () => isGallery ? openGalleryImage(context, item) : openItem(context, item)));
           });
       })),
@@ -627,6 +659,51 @@ class _EventsAdminPageState extends State<EventsAdminPage> {
   );
 }
 
+class FavouritesPage extends StatefulWidget {
+  const FavouritesPage({super.key});
+  @override
+  State<FavouritesPage> createState() => _FavouritesPageState();
+}
+class _FavouritesPageState extends State<FavouritesPage> {
+  Future<List<Map<String, dynamic>>> load() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getStringList('favourite_content') ?? [];
+    return saved.map((v) {
+      try { return Map<String, dynamic>.from(jsonDecode(v)); } catch (_) { return <String, dynamic>{}; }
+    }).where((e) => e.isNotEmpty).toList().reversed.toList();
+  }
+  Future<void> remove(Map<String, dynamic> item) async {
+    final prefs = await SharedPreferences.getInstance();
+    final id = (item['id'] ?? '').toString();
+    final saved = prefs.getStringList('favourite_content') ?? [];
+    final entries = saved.map((v) {
+      try { return Map<String, dynamic>.from(jsonDecode(v)); } catch (_) { return <String, dynamic>{}; }
+    }).where((e) => e.isNotEmpty && (e['id'] ?? '').toString() != id).toList();
+    await prefs.setStringList('favourite_content', entries.map((e) => jsonEncode(e)).toList());
+    await prefs.setStringList('favourite_content_ids', entries.map((e) => e['id'].toString()).toList());
+    if (mounted) setState(() {});
+  }
+  @override
+  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Favourites')),
+    body: FutureBuilder<List<Map<String, dynamic>>>(future: load(), builder: (context, snapshot) {
+      if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: champagne));
+      final rows = snapshot.data ?? [];
+      if (rows.isEmpty) return const EmptyState(message: 'Your saved devotional items will appear here.');
+      return ListView.separated(padding: const EdgeInsets.all(16), itemCount: rows.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 8), itemBuilder: (context, i) {
+          final item = rows[i]; final category = (item['category'] ?? 'Media').toString();
+          final gallery = category.toLowerCase() == 'gallery';
+          return Card(color: cardWhite, child: ListTile(
+            leading: Icon(gallery ? Icons.image_outlined : Icons.play_circle_outline, color: champagne),
+            title: Text(gallery ? 'Photo' : (item['title'] ?? 'Devotional content').toString(), style: const TextStyle(color: brown)),
+            subtitle: Text(category),
+            onTap: () => gallery ? openGalleryImage(context, item) : openItem(context, item),
+            trailing: IconButton(tooltip: 'Remove from favourites', icon: const Icon(Icons.favorite, color: maroon), onPressed: () => remove(item)),
+          ));
+        }));
+  }
+}
+
 class EventsPage extends StatelessWidget {
   const EventsPage({super.key});
   Future<List<Map<String, dynamic>>> load() async {
@@ -663,9 +740,21 @@ class _SadhanaPageState extends State<SadhanaPage> {
   String? completionMusicUrl;
   final completed = <String>[];
 
+  Future<void> _loadCompletedSessions() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getStringList('sadhana_completed_sessions') ?? [];
+    if (mounted) setState(() { completed..clear()..addAll(saved); });
+  }
+
+  Future<void> _saveCompletedSessions() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('sadhana_completed_sessions', completed);
+  }
+
   @override
   void initState() {
     super.initState();
+    _loadCompletedSessions();
     loadCompletionMusic();
   }
 
@@ -769,6 +858,7 @@ class _SadhanaPageState extends State<SadhanaPage> {
           completed.insert(0, DateTime.now().toString().substring(0, 16) + ' • ' + minutes.toString() + ' min');
         });
         HapticFeedback.vibrate();
+        _saveCompletedSessions();
         playCompletionMusic();
       } else {
         setState(() => remaining--);
@@ -857,7 +947,7 @@ class _SadhanaPageState extends State<SadhanaPage> {
       const SizedBox(height: 22),
       const Text('Completed sessions', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: brown)),
       if (completed.isEmpty)
-        const Padding(padding: EdgeInsets.only(top: 8), child: Text('Completed sessions will appear here during this app session.', style: TextStyle(color: brown)))
+        const Padding(padding: EdgeInsets.only(top: 8), child: Text('Your completed sessions are saved on this device.', style: TextStyle(color: brown)))
       else
         ...completed.map((s) => ListTile(leading: const Icon(Icons.check_circle_outline, color: champagne), title: Text(s))),
     ]),
@@ -876,7 +966,7 @@ class ProfilePage extends StatelessWidget {
           SizedBox(height: 5), Text('ॐ गुरवे नमः', style: TextStyle(color: brown)),
         ])),
       const SizedBox(height: 18),
-      ProfileTile(icon: Icons.favorite_outline, title: 'Favourites', subtitle: 'Your saved devotional items', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ContentPage(category: 'Favourites', title: 'Favourites')))),
+      ProfileTile(icon: Icons.favorite_outline, title: 'Favourites', subtitle: 'Your saved devotional items', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FavouritesPage()))),
       const ProfileTile(icon: Icons.info_outline, title: 'About the App', subtitle: 'Yog Yogeshwar Mahaprabhu Shree Ramlal Ji Maharaj'),
       const ProfileTile(icon: Icons.privacy_tip_outlined, title: 'Privacy', subtitle: 'Your practice is personal and private'),
       ProfileTile(icon: Icons.admin_panel_settings_outlined, title: 'Admin Login', subtitle: 'For authorised content administrators',
