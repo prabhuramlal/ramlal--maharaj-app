@@ -8,6 +8,10 @@ on:
       - build/real-devotional-app
       - feature/consolidated-app-updates
 
+concurrency:
+  group: ramlal-single-apk-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
