@@ -543,7 +543,7 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
         final data = Map<String, dynamic>.from(response.data);
         await Supabase.instance.client.auth.setSession(data['refresh_token'].toString());
       }
-      final role = response.user?.appMetadata['role']?.toString();
+      final role = Supabase.instance.client.auth.currentUser?.appMetadata['role']?.toString();
       if (role != 'admin' && role != 'super_admin') {
         await Supabase.instance.client.auth.signOut();
         throw Exception('This account is not authorised as an administrator.');
@@ -935,7 +935,7 @@ class _EventsAdminPageState extends State<EventsAdminPage> {
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not save event: $e')));
       }
     }
-    title.dispose(); description.dispose(); location.dispose();
+    title.dispose(); description.dispose(); location.dispose(); eventTime.dispose();
   }
   Future<void> deleteEvent(Map<String, dynamic> event) async {
     final yes = await showDialog<bool>(context: context, builder: (ctx) => AlertDialog(
