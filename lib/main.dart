@@ -547,7 +547,7 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
     } finally { if (mounted) setState(() => busy = false); }
   }
   @override
-  void dispose() { email.dispose(); phone.dispose(); fullName.dispose(); password.dispose(); super.dispose(); }
+  void dispose() { email.dispose(); password.dispose(); super.dispose(); }
   @override
   Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Administrator Login')),
     body: ListView(padding: const EdgeInsets.all(22), children: [
@@ -1569,7 +1569,7 @@ class _DevoteeAuthPageState extends State<DevoteeAuthPage> {
   }
 
   @override
-  void dispose() { email.dispose(); password.dispose(); super.dispose(); }
+  void dispose() { email.dispose(); phone.dispose(); fullName.dispose(); password.dispose(); super.dispose(); }
 
   @override
   Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: Text(creating ? 'Create Devotee Account' : 'Devotee Login')),
