@@ -73,7 +73,7 @@ class RamlalMaharajApp extends StatelessWidget {
       primaryTextTheme: GoogleFonts.notoSansDevanagariTextTheme(),
       colorScheme: ColorScheme.fromSeed(seedColor: champagne, primary: maroon, surface: ivory),
       appBarTheme: const AppBarTheme(backgroundColor: ivory, foregroundColor: brown, elevation: 0)),
-    home: const WelcomeGate());
+    home: (Supabase.instance.isInitialized && Supabase.instance.client.auth.currentSession != null) ? const MainScreen() : const WelcomeGate());
 }
 
 class WelcomeGate extends StatelessWidget {
@@ -211,13 +211,31 @@ class HomePage extends StatelessWidget {
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 2, mainAxisSpacing: 13, crossAxisSpacing: 13, childAspectRatio: 1.25))),
     SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.all(20), child: Container(padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(color: const Color(0xFFFFF9ED), borderRadius: BorderRadius.circular(18), border: Border.all(color: paleGold)),
-      child: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('आज की गुरु वाणी', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: maroon)),
-        SizedBox(height: 10), Text('गुरु कृपा ही जीवन का सबसे बड़ा आधार है।', style: TextStyle(fontSize: 16, color: brown)),
-        SizedBox(height: 6), Text('ॐ गुरवे नमः', style: TextStyle(fontSize: 12, color: champagne)),
-      ])))),
+      child: const LatestGuruVaniCard()))),
     const SliverToBoxAdapter(child: SizedBox(height: 18)),
   ]);
+}
+
+class LatestGuruVaniCard extends StatelessWidget {
+  const LatestGuruVaniCard({super.key});
+  Future<Map<String, dynamic>?> latest() async {
+    if (!Supabase.instance.isInitialized) return null;
+    final rows = await Supabase.instance.client.from('devotional_content').select().eq('published', true).eq('category', 'Guru Vani').order('created_at', ascending: false).limit(1);
+    return rows.isEmpty ? null : Map<String, dynamic>.from(rows.first);
+  }
+  @override
+  Widget build(BuildContext context) => FutureBuilder<Map<String, dynamic>?>(future: latest(), builder: (context, snap) {
+    final item = snap.data;
+    final title = (item?['title'] ?? '').toString();
+    final description = (item?['description'] ?? '').toString();
+    return InkWell(onTap: item == null ? null : () => openItem(context, item), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Text('आज की गुरु वाणी', style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold, color: maroon)),
+      const SizedBox(height: 10),
+      Text(description.isNotEmpty ? description : (title.isNotEmpty ? title : 'गुरु कृपा ही जीवन का सबसे बड़ा आधार है।'), style: const TextStyle(fontSize: 16, color: brown)),
+      const SizedBox(height: 6),
+      Text(title.isEmpty ? 'ॐ गुरवे नमः' : title, style: const TextStyle(fontSize: 12, color: champagne)),
+    ]));
+  });
 }
 
 class DarshanPage extends StatelessWidget {
@@ -568,19 +586,20 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     final external = externalUrl.text.trim();
     final isExternal = external.isNotEmpty;
     final picked = isExternal ? null : await FilePicker.platform.pickFiles(withData: true, type: FileType.any);
-    if (!isExternal && (picked == null || picked.files.single.bytes == null)) return;
+    final textOnly = category == 'Notifications' && description.text.trim().isNotEmpty;
+    if (!isExternal && !textOnly && (picked == null || picked.files.single.bytes == null)) return;
     if (!mounted) return;
     setState(() => busy = true);
     try {
       final file = picked?.files.single;
       String url = external;
-      if (!isExternal && file != null) {
+      if (!isExternal && !textOnly && file != null) {
         final safeName = file.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
         final storagePath = 'uploads/${DateTime.now().millisecondsSinceEpoch}_$safeName';
         await client.storage.from('prabhu').uploadBinary(storagePath, file.bytes!, fileOptions: FileOptions(upsert: false));
         url = client.storage.from('prabhu').getPublicUrl(storagePath);
       }
-      if (url.isEmpty) throw Exception('Choose a file or enter an external link.');
+      if (url.isEmpty && !textOnly) throw Exception('Choose a file or enter an external link.');
       await client.from('devotional_content').insert({
         'title': title.text.trim(),
         'category': category, 'description': description.text.trim(), 'file_url': url,
@@ -866,9 +885,9 @@ class _EventsAdminPageState extends State<EventsAdminPage> {
       builder: (dialogContext, setDialogState) => AlertDialog(
         title: Text(event == null ? 'Add event' : 'Edit event'),
         content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-          TextField(controller: title, decoration: const InputDecoration(labelText: 'Event title')),
-          TextField(controller: description, maxLines: 3, decoration: const InputDecoration(labelText: 'Description')),
-          TextField(controller: location, decoration: const InputDecoration(labelText: 'Location')),
+          TextField(controller: title, decoration: const InputDecoration(labelText: 'Event title (optional)')),
+          TextField(controller: description, maxLines: 3, decoration: const InputDecoration(labelText: 'Description / live programme details')),
+          TextField(controller: location, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'Location or YouTube Live link')),
           const SizedBox(height: 12),
           OutlinedButton.icon(
             onPressed: () async {
@@ -883,10 +902,6 @@ class _EventsAdminPageState extends State<EventsAdminPage> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
           FilledButton(onPressed: () {
-            if (title.text.trim().isEmpty) {
-              ScaffoldMessenger.of(dialogContext).showSnackBar(const SnackBar(content: Text('Enter an event title.')));
-              return;
-            }
             Navigator.pop(dialogContext, true);
           }, child: const Text('Save')),
         ],
@@ -1018,7 +1033,7 @@ class EventsPage extends StatelessWidget {
       return ListView.builder(padding: const EdgeInsets.all(16), itemCount: rows.length, itemBuilder: (_, i) {
         final e = rows[i];
         return Card(color: cardWhite, child: ListTile(leading: const Icon(Icons.event, color: maroon),
-          title: Text((e['title'] ?? '').toString()), subtitle: Text((e['event_date'] ?? '').toString() + ' • ' + (e['location'] ?? '').toString() + '\n' + (e['description'] ?? '').toString())));
+          title: Text((e['title'] ?? '').toString().trim().isEmpty ? 'Devotional Programme' : (e['title'] ?? '').toString()), subtitle: Text((e['event_date'] ?? '').toString() + ' • ' + (e['location'] ?? '').toString() + '\n' + (e['description'] ?? '').toString()), onTap: () { final loc = (e['location'] ?? '').toString(); final uri = Uri.tryParse(loc); if (uri != null && (loc.startsWith('https://') || loc.startsWith('http://'))) launchUrl(uri, mode: LaunchMode.externalApplication); }));
       });
     }));
 }
@@ -1302,6 +1317,55 @@ class _SadhanaPageState extends State<SadhanaPage> {
         ...completed.map((s) => ListTile(leading: const Icon(Icons.check_circle_outline, color: champagne), title: Text(s))),
     ]),
   );
+}
+
+class EditProfilePage extends StatefulWidget {
+  const EditProfilePage({super.key});
+  @override
+  State<EditProfilePage> createState() => _EditProfilePageState();
+}
+class _EditProfilePageState extends State<EditProfilePage> {
+  final name = TextEditingController(), phone = TextEditingController(), email = TextEditingController(), photo = TextEditingController(), password = TextEditingController();
+  bool busy = false;
+  @override
+  void initState() {
+    super.initState();
+    final u = Supabase.instance.client.auth.currentUser!;
+    name.text = (u.userMetadata?['full_name'] ?? '').toString();
+    phone.text = (u.userMetadata?['phone'] ?? '').toString();
+    photo.text = (u.userMetadata?['avatar_url'] ?? '').toString();
+    email.text = u.email ?? '';
+  }
+  Future<void> save() async {
+    setState(() => busy = true);
+    try {
+      final attrs = UserAttributes(data: {'full_name': name.text.trim(), 'phone': phone.text.trim(), 'avatar_url': photo.text.trim()}.cast<String, dynamic>(), email: email.text.trim().isEmpty ? null : email.text.trim(), password: password.text.isEmpty ? null : password.text);
+      await Supabase.instance.client.auth.updateUser(attrs);
+      if (mounted) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Personal details updated.'))); Navigator.pop(context); }
+    } on AuthException catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message))); }
+    catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not update profile: $e'))); }
+    finally { if (mounted) setState(() => busy = false); }
+  }
+  @override
+  void dispose() { name.dispose(); phone.dispose(); email.dispose(); photo.dispose(); password.dispose(); super.dispose(); }
+  @override
+  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('My Personal Details')), body: ListView(padding: const EdgeInsets.all(20), children: [
+    const Text('Profile photo is optional. Leave the photo link blank to use the default icon.', style: TextStyle(color: brown)),
+    const SizedBox(height: 12),
+    TextField(controller: name, decoration: const InputDecoration(labelText: 'Full name')),
+    const SizedBox(height: 12), TextField(controller: email, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Email address')),
+    const SizedBox(height: 12), TextField(controller: phone, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Registered phone number')),
+    const SizedBox(height: 12), TextField(controller: photo, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'Profile photo URL (optional)')),
+    const SizedBox(height: 12), TextField(controller: password, obscureText: true, decoration: const InputDecoration(labelText: 'New password (leave blank to keep current)')),
+    const SizedBox(height: 20), FilledButton(onPressed: busy ? null : save, child: Text(busy ? 'Saving...' : 'Save Changes')),
+  ]));
+}
+
+class PrivacyPolicyPage extends StatelessWidget {
+  const PrivacyPolicyPage({super.key});
+  static const policy = '''PRIVACY POLICY\nYog Yogeshwar Mahaprabhu Shree Ramlal Ji Maharaj\n\n1. INTRODUCTION\nWe respect your privacy and are committed to protecting personal information. This policy explains information handled when you use this devotional application.\n\n2. INFORMATION WE HANDLE\nDepending on use, the App may process your name, email address, registered phone number, optional profile photo URL, authentication identifiers, account preferences and limited technical logs. Guest users can access available guest features without creating an account.\n\n3. HOW INFORMATION IS USED\nInformation is used to create and manage accounts, maintain login sessions, provide devotional features, manage administrator permissions, deliver announcements, protect the service and respond to support requests.\n\n4. STORAGE AND SERVICE PROVIDERS\nThe App uses Supabase for configured authentication, database and media-storage services. Google services may process information when YouTube or YouTube Music links are opened. Those services operate under their own privacy policies.\n\n5. DEVOTIONAL MEDIA AND EXTERNAL LINKS\nThe App may display images, Daily Darshan, Guru Vani, Bhajans, Pravachan, PDFs, playlists and live programme links. Media may be uploaded to the App's configured storage or opened from external services.\n\n6. ADMINISTRATOR ACCESS\nAuthorised administrators may manage devotional content and account administration according to assigned permissions. Registered name, email and phone details may be visible to authorised administrators. Passwords are never displayed to administrators.\n\n7. NOTIFICATIONS\nThe App may display announcements about devotional programmes and new content. Notifications may contain text, images, documents or links.\n\n8. DATA SHARING\nWe do not sell or rent personal information. Data may be processed by service providers as needed to operate the App, maintain security or comply with law.\n\n9. SECURITY AND RETENTION\nReasonable safeguards are used to protect information. No online service can guarantee absolute security. Information is retained only as reasonably necessary for service operation, security and legal obligations.\n\n10. ACCOUNT DELETION\nUsers may request account deletion through the in-app deletion feature where available. Data will be deleted or deactivated as applicable, subject to legal retention requirements, technical limitations and backup cycles.\n\n11. CHILDREN'S PRIVACY\nThe App is intended for general devotional use. Parents or guardians may contact us if they believe a child has provided personal information requiring review.\n\n12. EXTERNAL SERVICES\nYouTube, YouTube Music and other external websites are governed by their own terms and privacy policies.\n\n13. YOUR CHOICES\nSubject to applicable law, you may request access to, correction of or deletion of your personal information and may stop using account-based features.\n\n14. CHANGES TO THIS PRIVACY POLICY\nThis policy may be updated when App features, services or legal requirements change. The latest version will be made available in the App.\n\n15. CONTACT\nFor privacy questions or requests, contact the App administrator through the official contact channel provided by the App.''';
+  @override
+  Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Privacy Policy')), body: SingleChildScrollView(padding: const EdgeInsets.all(20), child: SelectableText(policy, style: const TextStyle(height: 1.55, color: brown, fontSize: 14))));
 }
 
 class ProfilePage extends StatefulWidget {
