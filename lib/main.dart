@@ -888,6 +888,7 @@ class _EventsAdminPageState extends State<EventsAdminPage> {
     final title = TextEditingController(text: (event?['title'] ?? '').toString());
     final description = TextEditingController(text: (event?['description'] ?? '').toString());
     final location = TextEditingController(text: (event?['location'] ?? '').toString());
+    final eventTime = TextEditingController();
     DateTime selectedDate = DateTime.tryParse((event?['event_date'] ?? '').toString()) ?? DateTime.now();
     bool published = event?['published'] == true;
     final result = await showDialog<bool>(context: context, builder: (dialogContext) => StatefulBuilder(
@@ -897,6 +898,7 @@ class _EventsAdminPageState extends State<EventsAdminPage> {
           TextField(controller: title, decoration: const InputDecoration(labelText: 'Event title (optional)')),
           TextField(controller: description, maxLines: 3, decoration: const InputDecoration(labelText: 'Description / live programme details')),
           TextField(controller: location, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'Location or YouTube Live link')),
+          TextField(controller: eventTime, decoration: const InputDecoration(labelText: 'Scheduled time (optional)', hintText: 'e.g. 7:00 PM')),
           const SizedBox(height: 12),
           OutlinedButton.icon(
             onPressed: () async {
@@ -919,7 +921,7 @@ class _EventsAdminPageState extends State<EventsAdminPage> {
     if (result == true && mounted) {
       try {
         final data = {
-          'title': title.text.trim(), 'description': description.text.trim(), 'location': location.text.trim(),
+          'title': title.text.trim(), 'description': description.text.trim() + (eventTime.text.trim().isEmpty ? '' : '\\nScheduled time: ' + eventTime.text.trim()), 'location': location.text.trim(),
           'event_date': '${selectedDate.year.toString().padLeft(4, '0')}-${selectedDate.month.toString().padLeft(2, '0')}-${selectedDate.day.toString().padLeft(2, '0')}',
           'published': published,
         };
