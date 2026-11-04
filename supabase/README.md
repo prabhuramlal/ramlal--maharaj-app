@@ -27,9 +27,10 @@ From the repository root, link the intended Supabase project and deploy:
 supabase login
 supabase link --project-ref YOUR_PROJECT_REF
 supabase functions deploy manage-users
+supabase functions deploy phone-login
 ```
 
-The function uses the Supabase-provided `SUPABASE_URL`, `SUPABASE_ANON_KEY`,
+The `phone-login` function securely looks up the email attached to a registered phone number and attempts password authentication; it does not send or require an OTP. The `manage-users` function returns registered name and phone details to the Super Admin user list. Redeploy both functions after updating this repository.\n\nThe functions use the Supabase-provided `SUPABASE_URL`, `SUPABASE_ANON_KEY`,
 and `SUPABASE_SERVICE_ROLE_KEY` environment variables. The service-role key is
 used only inside the Edge Function. JWT verification is enabled in
 `config.toml`, and the function independently validates the caller's session
