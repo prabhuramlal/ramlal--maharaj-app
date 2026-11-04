@@ -1345,6 +1345,22 @@ class _EditProfilePageState extends State<EditProfilePage> {
     photo.text = (u.userMetadata?['avatar_url'] ?? '').toString();
     email.text = u.email ?? '';
   }
+  Future<void> choosePhoto() async {
+    final picked = await FilePicker.platform.pickFiles(type: FileType.image, withData: true);
+    if (picked == null || picked.files.single.bytes == null) return;
+    setState(() => busy = true);
+    try {
+      final file = picked.files.single;
+      final safe = file.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+      final path = 'avatars/${Supabase.instance.client.auth.currentUser!.id}_${DateTime.now().millisecondsSinceEpoch}_$safe';
+      await Supabase.instance.client.storage.from('prabhu').uploadBinary(path, file.bytes!, fileOptions: const FileOptions(upsert: true));
+      photo.text = Supabase.instance.client.storage.from('prabhu').getPublicUrl(path);
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Profile photo selected. Save changes to apply it.')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not upload photo: $e')));
+    } finally { if (mounted) setState(() => busy = false); }
+  }
+
   Future<void> save() async {
     setState(() => busy = true);
     try {
@@ -1364,7 +1380,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
     TextField(controller: name, decoration: const InputDecoration(labelText: 'Full name')),
     const SizedBox(height: 12), TextField(controller: email, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Email address')),
     const SizedBox(height: 12), TextField(controller: phone, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Registered phone number')),
-    const SizedBox(height: 12), TextField(controller: photo, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'Profile photo URL (optional)')),
+    const SizedBox(height: 12), OutlinedButton.icon(onPressed: busy ? null : choosePhoto, icon: const Icon(Icons.photo_camera_outlined), label: const Text('Choose profile photo (optional)')),
+    TextField(controller: photo, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'Or enter photo URL (optional)')),
     const SizedBox(height: 12), TextField(controller: password, obscureText: true, decoration: const InputDecoration(labelText: 'New password (leave blank to keep current)')),
     const SizedBox(height: 20), FilledButton(onPressed: busy ? null : save, child: Text(busy ? 'Saving...' : 'Save Changes')),
   ]));
