@@ -529,7 +529,7 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
     } finally { if (mounted) setState(() => busy = false); }
   }
   @override
-  void dispose() { email.dispose(); password.dispose(); super.dispose(); }
+  void dispose() { email.dispose(); phone.dispose(); fullName.dispose(); password.dispose(); super.dispose(); }
   @override
   Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Administrator Login')),
     body: ListView(padding: const EdgeInsets.all(22), children: [
@@ -781,10 +781,13 @@ class _SuperAdminUsersPageState extends State<SuperAdminUsersPage> {
     final query = searchQuery.trim().toLowerCase();
     final filteredUsers = users.where((u) {
       final email = (u['email'] ?? '').toString().toLowerCase();
+      final userMeta = u['user_metadata'] is Map ? Map<String, dynamic>.from(u['user_metadata']) : <String, dynamic>{};
+      final phone = (userMeta['phone'] ?? '').toString().toLowerCase();
+      final name = (userMeta['full_name'] ?? '').toString().toLowerCase();
       final id = (u['id'] ?? '').toString().toLowerCase();
       final metadata = u['app_metadata'] is Map ? Map<String, dynamic>.from(u['app_metadata']) : <String, dynamic>{};
       final role = (metadata['role'] ?? 'devotee').toString().toLowerCase();
-      return query.isEmpty || email.contains(query) || id.contains(query) || role.contains(query);
+      return query.isEmpty || email.contains(query) || phone.contains(query) || name.contains(query) || id.contains(query) || role.contains(query);
     }).toList();
     return RefreshIndicator(onRefresh: loadUsers, child: ListView(padding: const EdgeInsets.all(16), children: [
       const Text('Super Admin • User Management', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: maroon)),
@@ -813,12 +816,15 @@ class _SuperAdminUsersPageState extends State<SuperAdminUsersPage> {
         final email = (u['email'] ?? 'No email').toString();
         final metadata = u['app_metadata'] is Map ? Map<String, dynamic>.from(u['app_metadata']) : <String, dynamic>{};
         final role = (metadata['role'] ?? 'devotee').toString();
+        final userMeta = u['user_metadata'] is Map ? Map<String, dynamic>.from(u['user_metadata']) : <String, dynamic>{};
+        final phone = (userMeta['phone'] ?? 'Not provided').toString();
+        final fullName = (userMeta['full_name'] ?? '').toString();
         final banned = (u['banned_until'] ?? '').toString().isNotEmpty;
         final protected = id == self || role == 'super_admin';
         return Card(color: cardWhite, child: ListTile(
           leading: const Icon(Icons.account_circle_outlined, color: champagne, size: 30),
-          title: Text(email),
-          subtitle: Text(role.toUpperCase() + (banned ? ' • SUSPENDED' : ' • ACTIVE')),
+          title: Text(fullName.isEmpty ? email : fullName),
+          subtitle: Text('$email • $phone\n' + role.toUpperCase() + (banned ? ' • SUSPENDED' : ' • ACTIVE')),
           isThreeLine: false,
           trailing: protected ? const Icon(Icons.verified_user_outlined, color: brown) : PopupMenuButton<String>(
             enabled: !working,
@@ -1415,6 +1421,8 @@ class _ProfilePageState extends State<ProfilePage> {
         if (user == null)
           ProfileTile(icon: Icons.login, title: 'भक्त लॉगिन / Devotee Login', subtitle: 'Sign in or create a free account', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DevoteeAuthPage()))),
         if (user != null)
+          ProfileTile(icon: Icons.person_outline, title: 'My Personal Details', subtitle: 'View and update your profile', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EditProfilePage()))),
+        if (user != null)
           ProfileTile(icon: Icons.logout, title: 'साइन आउट • Sign Out', subtitle: 'Sign out of this account', onTap: () async {
             await client!.auth.signOut();
             if (mounted) setState(() {});
@@ -1423,7 +1431,7 @@ class _ProfilePageState extends State<ProfilePage> {
           ProfileTile(icon: Icons.delete_forever_outlined, title: 'खाता हटाएँ • Delete Account', subtitle: deleting ? 'Please wait…' : 'Permanently delete your account', onTap: deleting ? null : deleteAccount),
         ProfileTile(icon: Icons.favorite_outline, title: 'पसंदीदा • Favourites', subtitle: 'Your saved devotional items', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FavouritesPage()))),
         const ProfileTile(icon: Icons.info_outline, title: 'ऐप के बारे में • About the App', subtitle: 'Yog Yogeshwar Mahaprabhu Shree Ramlal Ji Maharaj'),
-        const ProfileTile(icon: Icons.privacy_tip_outlined, title: 'गोपनीयता • Privacy', subtitle: 'Your practice is personal and private'),
+        ProfileTile(icon: Icons.privacy_tip_outlined, title: 'गोपनीयता • Privacy', subtitle: 'Privacy Policy', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PrivacyPolicyPage()))),
         if (isAdmin)
           ProfileTile(icon: Icons.admin_panel_settings_outlined, title: 'एडमिन पोर्टल • Admin Portal', subtitle: 'Manage devotional content and events', onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminDashboardPage()))),
         if (user == null)
@@ -1438,7 +1446,7 @@ class DevoteeAuthPage extends StatefulWidget {
   State<DevoteeAuthPage> createState() => _DevoteeAuthPageState();
 }
 class _DevoteeAuthPageState extends State<DevoteeAuthPage> {
-  final email = TextEditingController();
+  final email = TextEditingController(), phone = TextEditingController(), fullName = TextEditingController();
   final password = TextEditingController();
   bool creating = false, busy = false, obscure = true;
   String? message, error;
@@ -1448,22 +1456,29 @@ class _DevoteeAuthPageState extends State<DevoteeAuthPage> {
       setState(() => error = 'Account service is not configured yet.');
       return;
     }
-    if (email.text.trim().isEmpty || password.text.length < 6) {
-      setState(() => error = 'Enter a valid email and a password with at least 6 characters.');
+    if ((creating && (email.text.trim().isEmpty || phone.text.trim().isEmpty || fullName.text.trim().isEmpty)) || (!creating && email.text.trim().isEmpty) || password.text.length < 6) {
+      setState(() => error = creating ? 'Enter your name, email, phone number and a password of at least 6 characters.' : 'Enter your email or phone number and password (minimum 6 characters).');
       return;
     }
     setState(() { busy = true; error = null; message = null; });
     try {
       final auth = Supabase.instance.client.auth;
       if (creating) {
-        final result = await auth.signUp(email: email.text.trim(), password: password.text);
+        final result = await auth.signUp(email: email.text.trim(), password: password.text, data: {'full_name': fullName.text.trim(), 'phone': phone.text.trim()});
         if (result.session == null) {
           setState(() => message = 'Account created. Please verify your email, then sign in.');
         } else if (mounted) {
           Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const MainScreen()), (route) => false);
         }
       } else {
-        await auth.signInWithPassword(email: email.text.trim(), password: password.text);
+        if (email.text.trim().contains('@')) {
+          await auth.signInWithPassword(email: email.text.trim(), password: password.text);
+        } else {
+          final response = await Supabase.instance.client.functions.invoke('phone-login', body: {'phone': email.text.trim(), 'password': password.text});
+          if (response.status < 200 || response.status >= 300) throw Exception('Phone login failed. Check your number and password.');
+          final data = Map<String, dynamic>.from(response.data);
+          await auth.setSession(data['refresh_token'].toString());
+        }
         if (mounted) Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => const MainScreen()), (route) => false);
       }
     } on AuthException catch (e) {
@@ -1505,9 +1520,15 @@ class _DevoteeAuthPageState extends State<DevoteeAuthPage> {
         Expanded(child: Divider(color: paleGold)),
       ]),
       const SizedBox(height: 12),
-      TextField(controller: email, keyboardType: TextInputType.emailAddress, autocorrect: false, decoration: const InputDecoration(labelText: 'Email address', prefixIcon: Icon(Icons.email_outlined))),
+      if (creating) ...[
+        TextField(controller: fullName, textCapitalization: TextCapitalization.words, decoration: const InputDecoration(labelText: 'Full name', prefixIcon: Icon(Icons.person_outline))),
+        const SizedBox(height: 12),
+        TextField(controller: phone, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: 'Phone number', prefixIcon: Icon(Icons.phone_outlined))),
+        const SizedBox(height: 12),
+      ],
+      TextField(controller: email, keyboardType: TextInputType.emailAddress, autocorrect: false, decoration: InputDecoration(labelText: creating ? 'Email address' : 'Email address or phone number', prefixIcon: const Icon(Icons.email_outlined))),
       const SizedBox(height: 12),
-      TextField(controller: password, obscureText: obscure, decoration: InputDecoration(labelText: 'Password (minimum 6 characters)', prefixIcon: const Icon(Icons.lock_outline), suffixIcon: IconButton(onPressed: () => setState(() => obscure = !obscure), icon: Icon(obscure ? Icons.visibility : Icons.visibility_off)))),
+      TextField(controller: password, obscureText: obscure, decoration: InputDecoration(labelText: creating ? 'Create Password (minimum 6 characters)' : 'Password', prefixIcon: const Icon(Icons.lock_outline), suffixIcon: IconButton(onPressed: () => setState(() => obscure = !obscure), icon: Icon(obscure ? Icons.visibility : Icons.visibility_off)))),
       if (error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(error!, style: const TextStyle(color: Colors.red))),
       if (message != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(message!, style: const TextStyle(color: brown))),
       const SizedBox(height: 18),
@@ -1515,7 +1536,7 @@ class _DevoteeAuthPageState extends State<DevoteeAuthPage> {
       if (!creating) TextButton(onPressed: busy ? null : resetPassword, child: const Text('Forgot password?')),
       TextButton(onPressed: busy ? null : () => setState(() { creating = !creating; error = null; message = null; }), child: Text(creating ? 'Already have an account? Sign in' : 'New here? Create a free account')),
       const SizedBox(height: 8),
-      const Text('You can continue using the app as a guest without creating an account. Phone/SMS OTP sign-in is not used.', textAlign: TextAlign.center, style: TextStyle(color: brown, fontSize: 12)),
+      const Text('Email or phone number + password. No OTP and no Google Sign-In. Guest access is also available.', textAlign: TextAlign.center, style: TextStyle(color: brown, fontSize: 12)),
     ]));
 }
 
