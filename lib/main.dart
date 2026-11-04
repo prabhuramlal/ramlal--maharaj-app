@@ -27,6 +27,7 @@ const paleGold = Color(0xFFE9D9B8);
 final FlutterLocalNotificationsPlugin sadhanaNotifications = FlutterLocalNotificationsPlugin();
 const int sadhanaAlarmNotificationId = 707;
 final ValueNotifier<bool> appHindi = ValueNotifier<bool>(false);
+String get currentDisplayName { final u = Supabase.instance.isInitialized ? Supabase.instance.client.auth.currentUser : null; final n = u?.userMetadata?['full_name']?.toString().trim(); return (n == null || n.isEmpty) ? 'Devotee' : n; }
 final GlobalKey<ScaffoldMessengerState> appMessengerKey = GlobalKey<ScaffoldMessengerState>();
 String appText(String english, String hindi) => appHindi.value ? hindi : english;
 
@@ -189,8 +190,8 @@ class HomePage extends StatelessWidget {
         ]))))),
     SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.fromLTRB(20, 15, 20, 14),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Text('जय गुरुदेव 🙏', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: maroon)),
-        const SizedBox(height: 4), Text(appText('A place for devotion, wisdom and inner peace', 'भक्ति, ज्ञान और आत्मिक शांति का स्थान'), style: TextStyle(color: brown, fontSize: 13)),
+        Text('Welcome, ${currentDisplayName}!', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: maroon)),
+        const SizedBox(height: 4), const Text('गुरुदेव की कृपा आप पर बनी रहे 🙏', style: TextStyle(color: brown, fontSize: 14)),
         const SizedBox(height: 20), Text(appText('Explore devotion', 'दर्शन एवं भक्ति'), style: TextStyle(fontSize: 19, fontWeight: FontWeight.bold, color: brown)),
       ]))),
     SliverPadding(padding: const EdgeInsets.symmetric(horizontal: 16), sliver: SliverGrid(
@@ -279,7 +280,7 @@ class _ContentPageState extends State<ContentPage> {
         if (!Supabase.instance.isInitialized) return const EmptyState(message: 'Content service is not connected yet.');
         if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: champagne));
         if (snapshot.hasError) return const EmptyState(message: 'Unable to load content. Please try again later.');
-        final rows = (snapshot.data ?? []).where((e) => (e['title'] ?? '').toString().toLowerCase().contains(search)).toList();
+        final rows = (snapshot.data ?? []).where((e) => ('${e['title'] ?? ''} ${e['description'] ?? ''}').toLowerCase().contains(search)).toList();
         if (rows.isEmpty) return const EmptyState(message: 'New devotional content will appear here soon.');
         return ListView.separated(padding: const EdgeInsets.all(16), itemCount: rows.length, separatorBuilder: (_, __) => const SizedBox(height: 10),
           itemBuilder: (context, i) {
@@ -297,7 +298,7 @@ class _ContentPageState extends State<ContentPage> {
                           : Icons.play_circle_outline,
                       color: maroon,
                     ),
-                title: isGallery ? const SizedBox.shrink() : Text((item['title'] ?? 'Devotional content').toString(), style: const TextStyle(fontWeight: FontWeight.w600, color: brown)),
+                title: isGallery || (item['title'] ?? '').toString().trim().isEmpty ? const SizedBox.shrink() : Text(item['title'].toString(), style: const TextStyle(fontWeight: FontWeight.w600, color: brown)),
                 subtitle: Text((item['description'] ?? '').toString(), maxLines: 2, overflow: TextOverflow.ellipsis),
                 trailing: isGallery ? const Icon(Icons.zoom_in, color: champagne) : Row(mainAxisSize: MainAxisSize.min, children: [
                   IconButton(
@@ -357,6 +358,11 @@ Future<void> openItem(BuildContext context, Map<String, dynamic> item) async {
   final lower = link.toLowerCase().split('?').first;
   if (link.isEmpty) {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Content link is not available.')));
+    return;
+  }
+  if (link.contains('youtube.com') || link.contains('youtu.be') || link.contains('music.youtube.com')) {
+    final uri = Uri.tryParse(link);
+    if (uri != null) await launchUrl(uri, mode: LaunchMode.externalApplication);
     return;
   }
   // Detect the actual file format before the devotional category. An Aarti
@@ -548,9 +554,9 @@ class AdminDashboardPage extends StatefulWidget {
 }
 class _AdminDashboardPageState extends State<AdminDashboardPage> {
   bool busy = false;
-  final title = TextEditingController(), description = TextEditingController();
+  final title = TextEditingController(), description = TextEditingController(), externalUrl = TextEditingController();
   String category = 'Bhajan';
-  final categories = const ['Bhajan','Aarti','Books','Guru Vani','Pravachan','Satsang','Gallery','Sadhana Music','Notifications'];
+  final categories = const ['Bhajan','Aarti','Books','Guru Vani','Pravachan','Satsang','Gallery','Sadhana Music','Notifications','Live'];
 
   Future<void> upload() async {
     final client = Supabase.instance.client;
@@ -559,25 +565,28 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Administrator permission required.')));
       return;
     }
-    if (category != 'Gallery' && title.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please enter a content title.')));
-      return;
-    }
-    final picked = await FilePicker.platform.pickFiles(withData: true, type: FileType.any);
-    if (picked == null || picked.files.single.bytes == null || !mounted) return;
+    final external = externalUrl.text.trim();
+    final isExternal = external.isNotEmpty;
+    final picked = isExternal ? null : await FilePicker.platform.pickFiles(withData: true, type: FileType.any);
+    if (!isExternal && (picked == null || picked.files.single.bytes == null)) return;
+    if (!mounted) return;
     setState(() => busy = true);
     try {
-      final file = picked.files.single;
-      final safeName = file.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
-      final storagePath = 'uploads/${DateTime.now().millisecondsSinceEpoch}_$safeName';
-      await client.storage.from('prabhu').uploadBinary(storagePath, file.bytes!, fileOptions: FileOptions(upsert: false));
-      final url = client.storage.from('prabhu').getPublicUrl(storagePath);
+      final file = picked?.files.single;
+      String url = external;
+      if (!isExternal && file != null) {
+        final safeName = file.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+        final storagePath = 'uploads/${DateTime.now().millisecondsSinceEpoch}_$safeName';
+        await client.storage.from('prabhu').uploadBinary(storagePath, file.bytes!, fileOptions: FileOptions(upsert: false));
+        url = client.storage.from('prabhu').getPublicUrl(storagePath);
+      }
+      if (url.isEmpty) throw Exception('Choose a file or enter an external link.');
       await client.from('devotional_content').insert({
-        'title': category == 'Gallery' ? '' : (title.text.trim().isEmpty ? file.name : title.text.trim()),
+        'title': title.text.trim(),
         'category': category, 'description': description.text.trim(), 'file_url': url,
         'thumbnail_url': category == 'Gallery' ? url : null, 'published': true,
       });
-      title.clear(); description.clear();
+      title.clear(); description.clear(); externalUrl.clear();
       if (mounted) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Content uploaded and published.'))); setState(() {}); }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload failed: $e')));
@@ -656,7 +665,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
   }
 
   @override
-  void dispose() { title.dispose(); description.dispose(); super.dispose(); }
+  void dispose() { title.dispose(); description.dispose(); externalUrl.dispose(); super.dispose(); }
 
   Widget uploadTab() => ListView(padding: const EdgeInsets.all(20), children: [
     const Text('Upload devotional content', style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold, color: maroon)),
@@ -666,12 +675,13 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       items: categories.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
       onChanged: busy ? null : (v) { if (v != null) setState(() => category = v); }),
     const SizedBox(height: 12),
-    if (category == 'Gallery') const Text('Photos are uploaded without displaying their file names.', style: TextStyle(color: brown))
-    else TextField(controller: title, decoration: const InputDecoration(labelText: 'Content title')),
+    TextField(controller: title, decoration: const InputDecoration(labelText: 'Title (optional)')),
+    const SizedBox(height: 12),
+    TextField(controller: externalUrl, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'External link (optional)', hintText: 'YouTube video or playlist URL', prefixIcon: Icon(Icons.link))),
     const SizedBox(height: 12),
     TextField(controller: description, maxLines: 3, decoration: const InputDecoration(labelText: 'Description (optional)')),
     const SizedBox(height: 18),
-    FilledButton.icon(onPressed: busy ? null : upload, icon: const Icon(Icons.cloud_upload), label: Text(busy ? 'Uploading...' : 'Choose file & publish'), style: FilledButton.styleFrom(backgroundColor: maroon)),  ]);
+    FilledButton.icon(onPressed: busy ? null : upload, icon: const Icon(Icons.cloud_upload), label: Text(busy ? 'Publishing...' : 'Choose file or publish link'), style: FilledButton.styleFrom(backgroundColor: maroon)),  ]);
 
   Widget manageTab() => FutureBuilder<List<Map<String, dynamic>>>(future: loadManagedContent(), builder: (context, snapshot) {
     if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: champagne));
