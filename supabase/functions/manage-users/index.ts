@@ -20,7 +20,7 @@ Deno.serve(async (req) => {
     if (action === "list") {
       const { data, error } = await admin.auth.admin.listUsers({ page: 1, perPage: 500 });
       if (error) return reply({ error: error.message }, 400);
-      return reply({ users: data.users.map((u) => ({ id: u.id, email: u.email ?? null, app_metadata: { role: u.app_metadata?.role ?? "devotee" }, banned_until: u.banned_until ?? null })) });
+      return reply({ users: data.users.map((u) => ({ id: u.id, email: u.email ?? null, app_metadata: { role: u.app_metadata?.role ?? "devotee" }, user_metadata: { full_name: u.user_metadata?.full_name ?? null, phone: u.user_metadata?.phone ?? null }, created_at: u.created_at, banned_until: u.banned_until ?? null })) });
     }
     const id = typeof body?.user_id === "string" ? body.user_id : "";
     if (!id) return reply({ error: "Valid user_id required" }, 400);
