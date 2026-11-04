@@ -160,9 +160,9 @@ class HomePage extends StatelessWidget {
     ('Bhajan', Icons.music_note_rounded), ('Aarti', Icons.local_fire_department_rounded),
     ('Books', Icons.menu_book_rounded), ('Guru Vani', Icons.auto_stories_rounded),
     ('Pravachan', Icons.mic_rounded), ('Satsang', Icons.groups_rounded),
-    ('Gallery', Icons.photo_library_rounded), ('Events', Icons.event_rounded),
+    ('Gallery', Icons.photo_library_rounded), ('Events', Icons.event_rounded), ('Live', Icons.live_tv_rounded),
   ];
-  static const hindiFeatures = ['भजन', 'आरती', 'पुस्तकें', 'गुरु वाणी', 'प्रवचन', 'सत्संग', 'गैलरी', 'कार्यक्रम'];
+  static const hindiFeatures = ['भजन', 'आरती', 'पुस्तकें', 'गुरु वाणी', 'प्रवचन', 'सत्संग', 'गैलरी', 'कार्यक्रम', 'लाइव'];
   @override
   Widget build(BuildContext context) => CustomScrollView(slivers: [
     SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
@@ -199,7 +199,7 @@ class HomePage extends StatelessWidget {
         final item = features[i];
         return InkWell(borderRadius: BorderRadius.circular(18),
           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) =>
-            item.$1 == 'Events' ? const EventsPage() : ContentPage(category: item.$1, title: item.$1))),
+            (item.$1 == 'Events' || item.$1 == 'Live') ? const EventsPage() : ContentPage(category: item.$1, title: item.$1))),
           child: Container(decoration: BoxDecoration(color: cardWhite, borderRadius: BorderRadius.circular(18),
             border: Border.all(color: paleGold), boxShadow: [BoxShadow(color: brown.withValues(alpha: .05), blurRadius: 8, offset: const Offset(0, 3))]),
             child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
