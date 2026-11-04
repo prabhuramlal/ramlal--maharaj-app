@@ -1543,7 +1543,7 @@ class DevoteeAuthPage extends StatefulWidget {
 }
 class _DevoteeAuthPageState extends State<DevoteeAuthPage> {
   final email = TextEditingController(), phone = TextEditingController(), fullName = TextEditingController();
-  final password = TextEditingController();
+  final password = TextEditingController(), confirmPassword = TextEditingController();
   bool creating = false, busy = false, obscure = true;
   String? message, error;
 
@@ -1552,8 +1552,8 @@ class _DevoteeAuthPageState extends State<DevoteeAuthPage> {
       setState(() => error = 'Account service is not configured yet.');
       return;
     }
-    if ((creating && (email.text.trim().isEmpty || phone.text.trim().isEmpty || fullName.text.trim().isEmpty)) || (!creating && email.text.trim().isEmpty) || password.text.length < 6) {
-      setState(() => error = creating ? 'Enter your name, email, phone number and a password of at least 6 characters.' : 'Enter your email or phone number and password (minimum 6 characters).');
+    if ((creating && (email.text.trim().isEmpty || phone.text.trim().isEmpty || fullName.text.trim().isEmpty)) || (!creating && email.text.trim().isEmpty) || password.text.length < 6 || (creating && password.text != confirmPassword.text)) {
+      setState(() => error = creating ? 'Enter your name, email, phone number, and matching passwords (minimum 6 characters).' : 'Enter your email or phone number and password (minimum 6 characters).');
       return;
     }
     setState(() { busy = true; error = null; message = null; });
@@ -1600,7 +1600,7 @@ class _DevoteeAuthPageState extends State<DevoteeAuthPage> {
   }
 
   @override
-  void dispose() { email.dispose(); phone.dispose(); fullName.dispose(); password.dispose(); super.dispose(); }
+  void dispose() { email.dispose(); phone.dispose(); fullName.dispose(); password.dispose(); confirmPassword.dispose(); super.dispose(); }
 
   @override
   Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: Text(creating ? 'Create Devotee Account' : 'Devotee Login')),
@@ -1625,6 +1625,10 @@ class _DevoteeAuthPageState extends State<DevoteeAuthPage> {
       TextField(controller: email, keyboardType: TextInputType.emailAddress, autocorrect: false, decoration: InputDecoration(labelText: creating ? 'Email address' : 'Email address or phone number', prefixIcon: const Icon(Icons.email_outlined))),
       const SizedBox(height: 12),
       TextField(controller: password, obscureText: obscure, decoration: InputDecoration(labelText: creating ? 'Create Password (minimum 6 characters)' : 'Password', prefixIcon: const Icon(Icons.lock_outline), suffixIcon: IconButton(onPressed: () => setState(() => obscure = !obscure), icon: Icon(obscure ? Icons.visibility : Icons.visibility_off)))),
+      if (creating) ...[
+        const SizedBox(height: 12),
+        TextField(controller: confirmPassword, obscureText: true, decoration: const InputDecoration(labelText: 'Confirm Password', prefixIcon: Icon(Icons.lock_reset_outlined))),
+      ],
       if (error != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(error!, style: const TextStyle(color: Colors.red))),
       if (message != null) Padding(padding: const EdgeInsets.only(top: 12), child: Text(message!, style: const TextStyle(color: brown))),
       const SizedBox(height: 18),
