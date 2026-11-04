@@ -212,6 +212,7 @@ class HomePage extends StatelessWidget {
     SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.all(20), child: Container(padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(color: const Color(0xFFFFF9ED), borderRadius: BorderRadius.circular(18), border: Border.all(color: paleGold)),
       child: const LatestGuruVaniCard()))),
+    SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.fromLTRB(20, 0, 20, 22), child: Card(color: cardWhite, elevation: 0, child: ListTile(leading: const Icon(Icons.video_library_outlined, color: maroon), title: const Text('Prabhu’s YouTube Channel', style: TextStyle(fontWeight: FontWeight.w600, color: maroon)), subtitle: const Text('Watch more devotional videos and programmes'), trailing: const Icon(Icons.open_in_new, color: champagne), onTap: () => launchUrl(Uri.parse('https://youtube.com/@dramitkumar2201'), mode: LaunchMode.externalApplication))))),
     const SliverToBoxAdapter(child: SizedBox(height: 18)),
   ]);
 }
@@ -531,10 +532,17 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
   bool busy = false, obscure = true;
   String? error;
   Future<void> signIn() async {
-    if (!Supabase.instance.isInitialized) { setState(() => error = 'Administrator sign-in is not configured in this build. The app needs the Supabase project URL and publishable key from the app administrator. Please configure SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY in GitHub Actions repository secrets, then rebuild.'); return; }
+    if (!Supabase.instance.isInitialized) { setState(() => error = 'Administrator sign-in is not configured in this build.'); return; }
     setState(() { busy = true; error = null; });
     try {
-      final response = await Supabase.instance.client.auth.signInWithPassword(email: email.text.trim(), password: password.text);
+      if (email.text.trim().contains('@')) {
+        await Supabase.instance.client.auth.signInWithPassword(email: email.text.trim(), password: password.text);
+      } else {
+        final response = await Supabase.instance.client.functions.invoke('phone-login', body: {'phone': email.text.trim(), 'password': password.text});
+        if (response.status < 200 || response.status >= 300) throw Exception('Phone login failed. Check your number and password.');
+        final data = Map<String, dynamic>.from(response.data);
+        await Supabase.instance.client.auth.setSession(data['refresh_token'].toString());
+      }
       final role = response.user?.appMetadata['role']?.toString();
       if (role != 'admin' && role != 'super_admin') {
         await Supabase.instance.client.auth.signOut();
@@ -554,7 +562,7 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
       const Icon(Icons.admin_panel_settings, color: maroon, size: 64),
       const SizedBox(height: 16), const Text('Authorised administrators only', textAlign: TextAlign.center, style: TextStyle(color: brown)),
       const SizedBox(height: 24),
-      TextField(controller: email, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Email address', prefixIcon: Icon(Icons.email_outlined))),
+      TextField(controller: email, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Email address or phone number', prefixIcon: Icon(Icons.email_outlined))),
       const SizedBox(height: 12),
       TextField(controller: password, obscureText: obscure, decoration: InputDecoration(labelText: 'Password', prefixIcon: const Icon(Icons.lock_outline),
         suffixIcon: IconButton(onPressed: () => setState(() => obscure = !obscure), icon: Icon(obscure ? Icons.visibility : Icons.visibility_off)))),
@@ -1351,7 +1359,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
   void dispose() { name.dispose(); phone.dispose(); email.dispose(); photo.dispose(); password.dispose(); super.dispose(); }
   @override
   Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('My Personal Details')), body: ListView(padding: const EdgeInsets.all(20), children: [
-    const Text('Profile photo is optional. Leave the photo link blank to use the default icon.', style: TextStyle(color: brown)),
+    const Text('Profile photo is optional. Leave it blank to use the default icon.', style: TextStyle(color: brown)),
     const SizedBox(height: 12),
     TextField(controller: name, decoration: const InputDecoration(labelText: 'Full name')),
     const SizedBox(height: 12), TextField(controller: email, keyboardType: TextInputType.emailAddress, decoration: const InputDecoration(labelText: 'Email address')),
@@ -1445,6 +1453,10 @@ class _ProfilePageState extends State<ProfilePage> {
             Text((user?.userMetadata?['full_name'] ?? user?.email ?? 'Welcome, Devotee • भक्त का स्वागत है').toString(), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: maroon)),
             const SizedBox(height: 5),
             Text(user == null ? 'अतिथि प्रवेश • Guest access' : (isAdmin ? (role == 'super_admin' ? 'सुपर एडमिन • Super Administrator' : 'एडमिन • Administrator') : 'भक्त खाता • Devotee account'), style: const TextStyle(color: brown)),
+            const SizedBox(height: 5),
+            if (user != null) Text('Email: ${user.email ?? 'Not provided'}', style: const TextStyle(color: brown, fontSize: 12)),
+            if (user != null) Text('Phone: ${(user.userMetadata?['phone'] ?? 'Not provided')}', style: const TextStyle(color: brown, fontSize: 12)),
+            if (user != null) Text('Joined: ${user.createdAt.split('T').first}', style: const TextStyle(color: brown, fontSize: 12)),
             const SizedBox(height: 5), const Text('ॐ गुरवे नमः', style: TextStyle(color: brown)),
           ])),
         const SizedBox(height: 18),
