@@ -400,10 +400,10 @@ Future<void> openItem(BuildContext context, Map<String, dynamic> item) async {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Content link is not available.')));
     return;
   }
-  if (link.contains('youtube.com') || link.contains('youtu.be') || link.contains('music.youtube.com')) {
+  final isStorageObject = link.contains('/storage/v1/object/public/prabhu/');
+  if (!isStorageObject && (link.startsWith('https://') || link.startsWith('http://'))) {
     final uri = Uri.tryParse(link);
-    if (uri != null) await launchUrl(uri, mode: LaunchMode.externalApplication);
-    return;
+    if (uri != null && await launchUrl(uri, mode: LaunchMode.externalApplication)) return;
   }
   if (image.isNotEmpty && external.isEmpty && video.isEmpty) {
     Navigator.push(context, MaterialPageRoute(builder: (_) => GalleryImagePage(imageUrl: image, title: title)));
