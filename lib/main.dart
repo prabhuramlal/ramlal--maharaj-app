@@ -346,10 +346,10 @@ class PremiumMediaCard extends StatelessWidget {
         if (description.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 8), child: Text(description, maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, height: 1.4, color: brown))),
         const SizedBox(height: 14),
         Row(children: [
-          Expanded(child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12), decoration: BoxDecoration(gradient: const LinearGradient(colors: [maroon, Color(0xFF8C3448)]), borderRadius: BorderRadius.circular(28), border: Border.all(color: champagne)), child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.play_circle_fill, color: Colors.white), SizedBox(width: 8), Flexible(child: Text('Tap to open video or external link', maxLines: 2, textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 12)))]))),
-          const SizedBox(width: 8),
+          if (link.isNotEmpty || video.isNotEmpty) Expanded(child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12), decoration: BoxDecoration(gradient: const LinearGradient(colors: [maroon, Color(0xFF8C3448)]), borderRadius: BorderRadius.circular(28), border: Border.all(color: champagne)), child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [const Icon(Icons.play_circle_fill, color: Colors.white), const SizedBox(width: 8), Flexible(child: Text(link.startsWith('http') && !link.contains('/storage/v1/object/public/prabhu/') ? 'Tap to open external link' : 'Tap to view media', maxLines: 2, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 12)))]))),
+          if (link.isNotEmpty || video.isNotEmpty) const SizedBox(width: 8),
           IconButton(tooltip: 'Favourite', onPressed: onFavourite, icon: Icon(favourite ? Icons.favorite : Icons.favorite_border, color: maroon)),
-          const Icon(Icons.open_in_new, color: champagne),
+          if (link.startsWith('http') && !link.contains('/storage/v1/object/public/prabhu/')) const Icon(Icons.open_in_new, color: champagne),
         ]),
       ]))),
     );
@@ -642,12 +642,22 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       final videoUrl = await store(pickedVideo, 'video');
       final mainFileUrl = await store(pickedMainFile, 'file');
       if (external.isEmpty && thumbUrl == null && videoUrl == null && mainFileUrl == null && !textOnly) throw Exception('Add a link, thumbnail, video or content file.');
-      await client.from('devotional_content').insert({
+      final entry = <String, dynamic>{
         'title': title.text.trim(), 'category': category, 'description': description.text.trim(),
         'file_url': external.isNotEmpty ? external : (mainFileUrl ?? ''),
         'thumbnail_url': thumbUrl ?? (category == 'Gallery' ? videoUrl : null),
         'video_url': videoUrl, 'published': true,
-      });
+      };
+      try {
+        await client.from('devotional_content').insert(entry);
+      } on PostgrestException catch (e) {
+        // Keep link/thumbnail uploads working on projects where the new migration
+        // has not yet been applied. Video metadata requires the video_url column.
+        if (e.code != 'PGRST204' || !e.message.contains('video_url')) rethrow;
+        entry.remove('video_url');
+        await client.from('devotional_content').insert(entry);
+        if (videoUrl != null) throw Exception('Link and thumbnail were published, but video attachment needs the Supabase video_url migration.');
+      }
       title.clear(); description.clear(); externalUrl.clear(); pickedThumbnail = null; pickedVideo = null; pickedMainFile = null;
       if (mounted) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Content uploaded and published.'))); setState(() {}); }
     } catch (e) {
