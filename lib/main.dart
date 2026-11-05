@@ -610,7 +610,7 @@ class AdminDashboardPage extends StatefulWidget {
 class _AdminDashboardPageState extends State<AdminDashboardPage> {
   bool busy = false;
   final title = TextEditingController(), description = TextEditingController(), externalUrl = TextEditingController();
-  PlatformFile? pickedThumbnail, pickedVideo;
+  PlatformFile? pickedThumbnail, pickedVideo, pickedMainFile;
   String category = 'Bhajan';
   final categories = const ['Bhajan','Aarti','Books','Guru Vani','Pravachan','Satsang','Gallery','Sadhana Music','Notifications','Live'];
 
@@ -623,11 +623,11 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     }
     final external = externalUrl.text.trim();
     final textOnly = category == 'Notifications' && description.text.trim().isNotEmpty;
-    if (external.isEmpty && pickedThumbnail == null && pickedVideo == null && !textOnly) {
+    if (external.isEmpty && pickedThumbnail == null && pickedVideo == null && pickedMainFile == null && !textOnly) {
       final picked = await FilePicker.platform.pickFiles(withData: true, type: FileType.any);
-      if (picked != null) pickedVideo = picked.files.single;
+      if (picked != null) pickedMainFile = picked.files.single;
     }
-    if (external.isEmpty && pickedThumbnail == null && pickedVideo == null && !textOnly) return;
+    if (external.isEmpty && pickedThumbnail == null && pickedVideo == null && pickedMainFile == null && !textOnly) return;
     if (!mounted) return;
     setState(() => busy = true);
     try {
@@ -640,15 +640,15 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       }
       final thumbUrl = await store(pickedThumbnail, 'thumb');
       final videoUrl = await store(pickedVideo, 'video');
-      final legacyFile = pickedThumbnail == null && pickedVideo == null && external.isEmpty ? null : (pickedVideo != null ? videoUrl : null);
-      if (external.isEmpty && thumbUrl == null && videoUrl == null && !textOnly) throw Exception('Add a link, thumbnail, video or content file.');
+      final mainFileUrl = await store(pickedMainFile, 'file');
+      if (external.isEmpty && thumbUrl == null && videoUrl == null && mainFileUrl == null && !textOnly) throw Exception('Add a link, thumbnail, video or content file.');
       await client.from('devotional_content').insert({
         'title': title.text.trim(), 'category': category, 'description': description.text.trim(),
-        'file_url': external.isNotEmpty ? external : (legacyFile ?? ''),
+        'file_url': external.isNotEmpty ? external : (mainFileUrl ?? ''),
         'thumbnail_url': thumbUrl ?? (category == 'Gallery' ? videoUrl : null),
         'video_url': videoUrl, 'published': true,
       });
-      title.clear(); description.clear(); externalUrl.clear(); pickedThumbnail = null; pickedVideo = null;
+      title.clear(); description.clear(); externalUrl.clear(); pickedThumbnail = null; pickedVideo = null; pickedMainFile = null;
       if (mounted) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Content uploaded and published.'))); setState(() {}); }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload failed: $e')));
@@ -744,6 +744,8 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     OutlinedButton.icon(onPressed: busy ? null : () async { final r = await FilePicker.platform.pickFiles(type: FileType.image, withData: true); if (r != null && mounted) setState(() => pickedThumbnail = r.files.single); }, icon: const Icon(Icons.image_outlined), label: Text(pickedThumbnail == null ? 'Add thumbnail / photo' : 'Thumbnail: ${pickedThumbnail!.name}')),
     const SizedBox(height: 8),
     OutlinedButton.icon(onPressed: busy ? null : () async { final r = await FilePicker.platform.pickFiles(type: FileType.video, withData: true); if (r != null && mounted) setState(() => pickedVideo = r.files.single); }, icon: const Icon(Icons.video_library_outlined), label: Text(pickedVideo == null ? 'Add optional video' : 'Video: ${pickedVideo!.name}')),
+    const SizedBox(height: 12),
+    OutlinedButton.icon(onPressed: busy ? null : () async { final r = await FilePicker.platform.pickFiles(withData: true, type: FileType.any); if (r != null && mounted) setState(() => pickedMainFile = r.files.single); }, icon: const Icon(Icons.attach_file), label: Text(pickedMainFile == null ? 'Add main file (audio / PDF / other)' : 'File: ${pickedMainFile!.name}')),
     const SizedBox(height: 12),
     TextField(controller: description, maxLines: 3, decoration: const InputDecoration(labelText: 'Description (optional)')),
     const SizedBox(height: 18),
