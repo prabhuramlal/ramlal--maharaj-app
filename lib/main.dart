@@ -212,7 +212,7 @@ class HomePage extends StatelessWidget {
     SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.all(20), child: Container(padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(color: const Color(0xFFFFF9ED), borderRadius: BorderRadius.circular(18), border: Border.all(color: paleGold)),
       child: const LatestGuruVaniCard()))),
-    SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.fromLTRB(20, 0, 20, 22), child: Card(color: cardWhite, elevation: 0, child: ListTile(leading: const Icon(Icons.video_library_outlined, color: maroon), title: const Text('Prabhu’s YouTube Channel', style: TextStyle(fontWeight: FontWeight.w600, color: maroon)), subtitle: const Text('Watch more devotional videos and programmes'), trailing: const Icon(Icons.open_in_new, color: champagne), onTap: () => launchUrl(Uri.parse('https://youtube.com/@dramitkumar2201'), mode: LaunchMode.externalApplication))))),
+    SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.fromLTRB(20, 0, 20, 22), child: Card(color: cardWhite, elevation: 0, child: ListTile(leading: const Icon(Icons.video_library_outlined, color: maroon), title: const Text('Yogeshwar Mahaprabhu Shree Ramlal Ji Maharaj', style: TextStyle(fontWeight: FontWeight.w600, color: maroon)), subtitle: const Text('Watch more devotional videos and programmes'), trailing: const Icon(Icons.open_in_new, color: champagne), onTap: () => launchUrl(Uri.parse('https://youtube.com/@dramitkumar2201'), mode: LaunchMode.externalApplication))))),
     const SliverToBoxAdapter(child: SizedBox(height: 18)),
   ]);
 }
@@ -247,7 +247,7 @@ class DarshanPage extends StatelessWidget {
 class MediaPage extends StatelessWidget {
   const MediaPage({super.key});
   @override
-  Widget build(BuildContext context) => const ContentPage(category: 'Bhajan', title: 'Devotional Media', embedded: true);
+  Widget build(BuildContext context) => const ContentPage(category: 'All', title: 'Include Media', embedded: true);
 }
 
 class ContentPage extends StatefulWidget {
@@ -285,7 +285,9 @@ class _ContentPageState extends State<ContentPage> {
   Future<List<Map<String, dynamic>>> load() async {
     if (!Supabase.instance.isInitialized) return [];
     final rows = await Supabase.instance.client.from('devotional_content').select()
-      .eq('published', true).eq('category', widget.category).order('created_at', ascending: false);
+      .eq('published', true).order('created_at', ascending: false);
+    final filtered = widget.category == 'All' ? rows : rows.where((r) => r['category'] == widget.category).toList();
+    return List<Map<String, dynamic>>.from(filtered);
     return List<Map<String, dynamic>>.from(rows);
   }
   @override
@@ -304,30 +306,7 @@ class _ContentPageState extends State<ContentPage> {
         return ListView.separated(padding: const EdgeInsets.all(16), itemCount: rows.length, separatorBuilder: (_, __) => const SizedBox(height: 10),
           itemBuilder: (context, i) {
             final item = rows[i];
-            final imageUrl = (item['thumbnail_url'] ?? item['file_url'] ?? '').toString();
-            final isGallery = widget.category.toLowerCase() == 'gallery';
-            return Card(color: cardWhite, elevation: 0, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: const BorderSide(color: paleGold)),
-              child: ListTile(
-                leading: isGallery && imageUrl.isNotEmpty
-                  ? ClipRRect(borderRadius: BorderRadius.circular(9), child: Image.network(imageUrl, width: 58, height: 58, fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => const SizedBox(width: 58, height: 58, child: Icon(Icons.image_not_supported, color: champagne))))
-                  : Icon(
-                      (item['file_url'] ?? '').toString().toLowerCase().split('?').first.endsWith('.pdf')
-                          ? Icons.picture_as_pdf_outlined
-                          : Icons.play_circle_outline,
-                      color: maroon,
-                    ),
-                title: isGallery || (item['title'] ?? '').toString().trim().isEmpty ? const SizedBox.shrink() : Text(item['title'].toString(), style: const TextStyle(fontWeight: FontWeight.w600, color: brown)),
-                subtitle: Text((item['description'] ?? '').toString(), maxLines: 2, overflow: TextOverflow.ellipsis),
-                trailing: isGallery ? const Icon(Icons.zoom_in, color: champagne) : Row(mainAxisSize: MainAxisSize.min, children: [
-                  IconButton(
-                    tooltip: favouriteIds.contains((item['id'] ?? '').toString()) ? 'Remove from favourites' : 'Add to favourites',
-                    onPressed: () => _toggleFavourite(item),
-                    icon: Icon(favouriteIds.contains((item['id'] ?? '').toString()) ? Icons.favorite : Icons.favorite_border, color: maroon),
-                  ),
-                  const Icon(Icons.open_in_new, color: champagne),
-                ]),
-                onTap: () => isGallery ? openGalleryImage(context, item) : openItem(context, item)));
+            return PremiumMediaCard(item: item, favourite: favouriteIds.contains((item['id'] ?? '').toString()), onFavourite: () => _toggleFavourite(item), onOpen: () => openItem(context, item));
           });
       })),
     ]);
@@ -338,6 +317,45 @@ class _ContentPageState extends State<ContentPage> {
     return Scaffold(appBar: AppBar(title: Text(widget.title)), body: content);
   }
 }
+class PremiumMediaCard extends StatelessWidget {
+  final Map<String, dynamic> item;
+  final bool favourite;
+  final VoidCallback onFavourite, onOpen;
+  const PremiumMediaCard({super.key, required this.item, required this.favourite, required this.onFavourite, required this.onOpen});
+  @override
+  Widget build(BuildContext context) {
+    final image = (item['thumbnail_url'] ?? '').toString();
+    final title = (item['title'] ?? '').toString().trim();
+    final description = (item['description'] ?? '').toString().trim();
+    final video = (item['video_url'] ?? '').toString().trim();
+    final link = (item['file_url'] ?? '').toString().trim();
+    return Card(
+      color: cardWhite, elevation: 2, shadowColor: champagne.withValues(alpha: .18),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22), side: const BorderSide(color: paleGold, width: 1.2)),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(onTap: onOpen, child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        if (image.isNotEmpty)
+          ClipRRect(borderRadius: BorderRadius.circular(17), child: AspectRatio(aspectRatio: 16/9, child: Stack(fit: StackFit.expand, children: [
+            Image.network(image, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(color: ivory, child: const Icon(Icons.image_not_supported_outlined, color: champagne, size: 44))),
+            if (video.isNotEmpty || link.isNotEmpty) Center(child: Container(width: 58, height: 58, decoration: BoxDecoration(color: maroon.withValues(alpha: .86), shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 2)), child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 40))),
+            Positioned(bottom: 10, right: 10, child: Container(padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5), decoration: BoxDecoration(color: maroon.withValues(alpha: .88), borderRadius: BorderRadius.circular(20)), child: Text((item['category'] ?? 'MEDIA').toString().toUpperCase(), style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: .7)))),
+          ]))),
+        if (image.isEmpty) Container(height: 100, decoration: BoxDecoration(color: ivory, borderRadius: BorderRadius.circular(16)), child: Center(child: Icon(video.isNotEmpty ? Icons.video_library_outlined : Icons.link_rounded, color: champagne, size: 42))),
+        const SizedBox(height: 14),
+        if (title.isNotEmpty) Text(title, style: const TextStyle(fontSize: 21, fontWeight: FontWeight.bold, color: maroon)),
+        if (description.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 8), child: Text(description, maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 15, height: 1.4, color: brown))),
+        const SizedBox(height: 14),
+        Row(children: [
+          Expanded(child: Container(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12), decoration: BoxDecoration(gradient: const LinearGradient(colors: [maroon, Color(0xFF8C3448)]), borderRadius: BorderRadius.circular(28), border: Border.all(color: champagne)), child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.play_circle_fill, color: Colors.white), SizedBox(width: 8), Flexible(child: Text('Tap to open video or external link', maxLines: 2, textAlign: TextAlign.center, style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 12)))]))),
+          const SizedBox(width: 8),
+          IconButton(tooltip: 'Favourite', onPressed: onFavourite, icon: Icon(favourite ? Icons.favorite : Icons.favorite_border, color: maroon)),
+          const Icon(Icons.open_in_new, color: champagne),
+        ]),
+      ]))),
+    );
+  }
+}
+
 void openGalleryImage(BuildContext context, Map<String, dynamic> item) {
   final link = (item['file_url'] ?? item['thumbnail_url'] ?? '').toString();
   if (link.isEmpty) {
@@ -371,7 +389,10 @@ class GalleryImagePage extends StatelessWidget {
 }
 
 Future<void> openItem(BuildContext context, Map<String, dynamic> item) async {
-  final link = (item['file_url'] ?? '').toString();
+  final external = (item['file_url'] ?? '').toString().trim();
+  final video = (item['video_url'] ?? '').toString().trim();
+  final image = (item['thumbnail_url'] ?? '').toString().trim();
+  final link = external.isNotEmpty ? external : video.isNotEmpty ? video : image;
   final category = (item['category'] ?? '').toString().toLowerCase();
   final title = (item['title'] ?? 'Devotional content').toString();
   final lower = link.toLowerCase().split('?').first;
@@ -382,6 +403,14 @@ Future<void> openItem(BuildContext context, Map<String, dynamic> item) async {
   if (link.contains('youtube.com') || link.contains('youtu.be') || link.contains('music.youtube.com')) {
     final uri = Uri.tryParse(link);
     if (uri != null) await launchUrl(uri, mode: LaunchMode.externalApplication);
+    return;
+  }
+  if (image.isNotEmpty && external.isEmpty && video.isEmpty) {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => GalleryImagePage(imageUrl: image, title: title)));
+    return;
+  }
+  if (video.isNotEmpty && external.isEmpty) {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => InAppVideoPage(url: video, title: title)));
     return;
   }
   // Detect the actual file format before the devotional category. An Aarti
@@ -581,6 +610,7 @@ class AdminDashboardPage extends StatefulWidget {
 class _AdminDashboardPageState extends State<AdminDashboardPage> {
   bool busy = false;
   final title = TextEditingController(), description = TextEditingController(), externalUrl = TextEditingController();
+  PlatformFile? pickedThumbnail, pickedVideo;
   String category = 'Bhajan';
   final categories = const ['Bhajan','Aarti','Books','Guru Vani','Pravachan','Satsang','Gallery','Sadhana Music','Notifications','Live'];
 
@@ -592,28 +622,33 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       return;
     }
     final external = externalUrl.text.trim();
-    final isExternal = external.isNotEmpty;
-    final picked = isExternal ? null : await FilePicker.platform.pickFiles(withData: true, type: FileType.any);
     final textOnly = category == 'Notifications' && description.text.trim().isNotEmpty;
-    if (!isExternal && !textOnly && (picked == null || picked.files.single.bytes == null)) return;
+    if (external.isEmpty && pickedThumbnail == null && pickedVideo == null && !textOnly) {
+      final picked = await FilePicker.platform.pickFiles(withData: true, type: FileType.any);
+      if (picked != null) pickedVideo = picked.files.single;
+    }
+    if (external.isEmpty && pickedThumbnail == null && pickedVideo == null && !textOnly) return;
     if (!mounted) return;
     setState(() => busy = true);
     try {
-      final file = picked?.files.single;
-      String url = external;
-      if (!isExternal && !textOnly && file != null) {
+      Future<String?> store(PlatformFile? file, String kind) async {
+        if (file == null || file.bytes == null) return null;
         final safeName = file.name.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
-        final storagePath = 'uploads/${DateTime.now().millisecondsSinceEpoch}_$safeName';
+        final storagePath = 'uploads/${DateTime.now().millisecondsSinceEpoch}_${kind}_$safeName';
         await client.storage.from('prabhu').uploadBinary(storagePath, file.bytes!, fileOptions: FileOptions(upsert: false));
-        url = client.storage.from('prabhu').getPublicUrl(storagePath);
+        return client.storage.from('prabhu').getPublicUrl(storagePath);
       }
-      if (url.isEmpty && !textOnly) throw Exception('Choose a file or enter an external link.');
+      final thumbUrl = await store(pickedThumbnail, 'thumb');
+      final videoUrl = await store(pickedVideo, 'video');
+      final legacyFile = pickedThumbnail == null && pickedVideo == null && external.isEmpty ? null : (pickedVideo != null ? videoUrl : null);
+      if (external.isEmpty && thumbUrl == null && videoUrl == null && !textOnly) throw Exception('Add a link, thumbnail, video or content file.');
       await client.from('devotional_content').insert({
-        'title': title.text.trim(),
-        'category': category, 'description': description.text.trim(), 'file_url': url,
-        'thumbnail_url': category == 'Gallery' ? url : null, 'published': true,
+        'title': title.text.trim(), 'category': category, 'description': description.text.trim(),
+        'file_url': external.isNotEmpty ? external : (legacyFile ?? ''),
+        'thumbnail_url': thumbUrl ?? (category == 'Gallery' ? videoUrl : null),
+        'video_url': videoUrl, 'published': true,
       });
-      title.clear(); description.clear(); externalUrl.clear();
+      title.clear(); description.clear(); externalUrl.clear(); pickedThumbnail = null; pickedVideo = null;
       if (mounted) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Content uploaded and published.'))); setState(() {}); }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload failed: $e')));
@@ -704,11 +739,15 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     const SizedBox(height: 12),
     TextField(controller: title, decoration: const InputDecoration(labelText: 'Title (optional)')),
     const SizedBox(height: 12),
-    TextField(controller: externalUrl, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'External link (optional)', hintText: 'YouTube video or playlist URL', prefixIcon: Icon(Icons.link))),
+    TextField(controller: externalUrl, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'External link (optional)', hintText: 'YouTube video, playlist or website URL', prefixIcon: Icon(Icons.link))),
+    const SizedBox(height: 12),
+    OutlinedButton.icon(onPressed: busy ? null : () async { final r = await FilePicker.platform.pickFiles(type: FileType.image, withData: true); if (r != null && mounted) setState(() => pickedThumbnail = r.files.single); }, icon: const Icon(Icons.image_outlined), label: Text(pickedThumbnail == null ? 'Add thumbnail / photo' : 'Thumbnail: ${pickedThumbnail!.name}')),
+    const SizedBox(height: 8),
+    OutlinedButton.icon(onPressed: busy ? null : () async { final r = await FilePicker.platform.pickFiles(type: FileType.video, withData: true); if (r != null && mounted) setState(() => pickedVideo = r.files.single); }, icon: const Icon(Icons.video_library_outlined), label: Text(pickedVideo == null ? 'Add optional video' : 'Video: ${pickedVideo!.name}')),
     const SizedBox(height: 12),
     TextField(controller: description, maxLines: 3, decoration: const InputDecoration(labelText: 'Description (optional)')),
     const SizedBox(height: 18),
-    FilledButton.icon(onPressed: busy ? null : upload, icon: const Icon(Icons.cloud_upload), label: Text(busy ? 'Publishing...' : 'Choose file or publish link'), style: FilledButton.styleFrom(backgroundColor: maroon)),  ]);
+    FilledButton.icon(onPressed: busy ? null : upload, icon: const Icon(Icons.cloud_upload), label: Text(busy ? 'Publishing...' : 'Publish media'), style: FilledButton.styleFrom(backgroundColor: maroon)),  ]);
 
   Widget manageTab() => FutureBuilder<List<Map<String, dynamic>>>(future: loadManagedContent(), builder: (context, snapshot) {
     if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: champagne));
