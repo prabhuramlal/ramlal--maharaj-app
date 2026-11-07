@@ -40,6 +40,7 @@ dependencies:
   just_audio: ^0.10.5
   shared_preferences: ^2.5.3
   file_picker: ^10.3.7
+  image_cropper: ^9.1.0
   pdfrx: ^2.2.24
   flutter_tts: ^4.2.3
   video_player: ^2.10.0
