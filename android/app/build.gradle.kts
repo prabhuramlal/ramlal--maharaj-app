@@ -9,7 +9,7 @@ plugins {
 
 android {
     namespace = "com.ramlalmaharaj.ramlal_maharaj_app"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 35
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
