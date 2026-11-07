@@ -412,7 +412,7 @@ Future<void> openItem(BuildContext context, Map<String, dynamic> item) async {
     final uri = Uri.tryParse(link);
     if (uri != null && await launchUrl(uri, mode: LaunchMode.externalApplication)) return;
   }
-  if (image.isNotEmpty && (external.isEmpty || _isImageUrl(external)) && video.isEmpty) {
+  if (image.isNotEmpty && (external.isEmpty || isImageMediaUrl(external)) && video.isEmpty) {
     Navigator.push(context, MaterialPageRoute(builder: (_) => GalleryImagePage(imageUrl: image, title: title)));
     return;
   }
@@ -422,7 +422,7 @@ Future<void> openItem(BuildContext context, Map<String, dynamic> item) async {
   }
   // Detect the actual file format before the devotional category. An Aarti
   // entry may be a PDF booklet, not an audio track.
-  if (_isImageUrl(link)) {
+  if (isImageMediaUrl(link)) {
     Navigator.push(context, MaterialPageRoute(builder: (_) => GalleryImagePage(imageUrl: link, title: title)));
     return;
   }
@@ -707,7 +707,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Preview is not available for this item.')));
       return;
     }
-    if (category == 'gallery' || _isImageUrl(url)) {
+    if (category == 'gallery' || isImageMediaUrl(url)) {
       openGalleryImage(context, item);
       return;
     }
@@ -735,7 +735,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     }
   }
 
-  bool _isImageUrl(String url) => RegExp(r'\.(png|jpe?g|webp|gif)(\?|$)', caseSensitive: false).hasMatch(url);
+  bool isImageMediaUrl(String url) => RegExp(r'\.(png|jpe?g|webp|gif)(\?|$)', caseSensitive: false).hasMatch(url);
 
   Future<void> removeContent(Map<String, dynamic> item) async {
     final id = item['id'];
