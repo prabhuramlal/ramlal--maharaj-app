@@ -26,7 +26,7 @@ const brown = Color(0xFF704B2B);
 const cardWhite = Color(0xFFFFFEFA);
 const paleGold = Color(0xFFE9D9B8);
 
-bool isImageMediaUrl(String url) => RegExp(r'\\.(png|jpe?g|webp|gif)(\\?|$)', caseSensitive: false).hasMatch(url);
+bool isImageMediaUrl(String url) => RegExp(r'\.(png|jpe?g|webp|gif)(\?|$)', caseSensitive: false).hasMatch(url);
 
 final FlutterLocalNotificationsPlugin sadhanaNotifications = FlutterLocalNotificationsPlugin();
 const int sadhanaAlarmNotificationId = 707;
