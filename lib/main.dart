@@ -26,6 +26,8 @@ const brown = Color(0xFF704B2B);
 const cardWhite = Color(0xFFFFFEFA);
 const paleGold = Color(0xFFE9D9B8);
 
+bool isImageMediaUrl(String url) => RegExp(r'\\.(png|jpe?g|webp|gif)(\\?|$)', caseSensitive: false).hasMatch(url);
+
 final FlutterLocalNotificationsPlugin sadhanaNotifications = FlutterLocalNotificationsPlugin();
 const int sadhanaAlarmNotificationId = 707;
 final ValueNotifier<bool> appHindi = ValueNotifier<bool>(false);
@@ -326,13 +328,13 @@ class PremiumMediaCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final rawImage = (item['thumbnail_url'] ?? '').toString();
-    final image = rawImage.isNotEmpty ? rawImage : (_isImageUrl((item['file_url'] ?? '').toString()) ? (item['file_url'] ?? '').toString() : '');
+    final image = rawImage.isNotEmpty ? rawImage : (isImageMediaUrl((item['file_url'] ?? '').toString()) ? (item['file_url'] ?? '').toString() : '');
     final title = (item['title'] ?? '').toString().trim();
     final description = (item['description'] ?? '').toString().trim();
     final video = (item['video_url'] ?? '').toString().trim();
     final link = (item['file_url'] ?? '').toString().trim();
     final hasExternal = link.startsWith('http') && !link.contains('/storage/v1/object/public/prabhu/');
-    final hasAction = hasExternal || video.isNotEmpty || (link.isNotEmpty && ! _isImageUrl(link));
+    final hasAction = hasExternal || video.isNotEmpty || (link.isNotEmpty && ! isImageMediaUrl(link));
     return Card(
       color: cardWhite, elevation: 2, shadowColor: champagne.withValues(alpha: .18),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22), side: const BorderSide(color: paleGold, width: 1.2)),
@@ -396,7 +398,7 @@ Future<void> openItem(BuildContext context, Map<String, dynamic> item) async {
   final external = (item['file_url'] ?? '').toString().trim();
   final video = (item['video_url'] ?? '').toString().trim();
   final storedImage = (item['thumbnail_url'] ?? '').toString().trim();
-  final image = storedImage.isNotEmpty ? storedImage : (_isImageUrl(external) ? external : '');
+  final image = storedImage.isNotEmpty ? storedImage : (isImageMediaUrl(external) ? external : '');
   final link = external.isNotEmpty ? external : video.isNotEmpty ? video : image;
   final category = (item['category'] ?? '').toString().toLowerCase();
   final title = (item['title'] ?? 'Devotional content').toString();
