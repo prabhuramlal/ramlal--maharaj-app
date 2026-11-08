@@ -18,12 +18,16 @@ subprojects {
     project.layout.buildDirectory.value(newSubprojectBuildDir)
 }
 
-// Align Flutter Android library plugins with the app's compile SDK.
-// Some plugins (including image_cropper) declare an older SDK internally.
+// Some Flutter plugins (notably image_cropper 9.1.0) hard-code
+// compileSdkVersion 33 in their own Android library build.gradle.
+// Apply the override AFTER each library project has been evaluated,
+// otherwise that plugin's own android { } block overwrites the value.
 subprojects {
-    plugins.withId("com.android.library") {
-        extensions.configure<LibraryExtension>("android") {
-            compileSdk = 36
+    afterEvaluate {
+        if (plugins.hasPlugin("com.android.library")) {
+            extensions.configure<LibraryExtension>("android") {
+                compileSdk = 36
+            }
         }
     }
 }
