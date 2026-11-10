@@ -1,7 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
-import 'package:image_cropper/image_cropper.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter/services.dart';
@@ -625,20 +623,41 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
   bool cropBusy = false;
 
   Future<void> chooseAndAdjustPhoto() async {
-    final picked = await FilePicker.platform.pickFiles(type: FileType.image, withData: false);
-    if (picked == null || picked.files.single.path == null || !mounted) return;
+    if (cropBusy || busy) return;
     setState(() => cropBusy = true);
     try {
-      final cropped = await ImageCropper().cropImage(
-        sourcePath: picked.files.single.path!, compressQuality: 92,
-        uiSettings: [AndroidUiSettings(toolbarTitle: 'Adjust Photo', toolbarColor: maroon, toolbarWidgetColor: Colors.white, activeControlsWidgetColor: champagne, backgroundColor: ivory, initAspectRatio: CropAspectRatioPreset.original, lockAspectRatio: false, hideBottomControls: false)],
+      // Read the selected image bytes directly. Avoid launching the native
+      // image_cropper activity, which was force-closing on some Android phones.
+      final picked = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        allowMultiple: false,
+        withData: true,
       );
-      if (cropped == null || !mounted) return;
-      final bytes = await File(cropped.path).readAsBytes();
-      setState(() => pickedThumbnail = PlatformFile(name: picked.files.single.name, size: bytes.length, bytes: bytes));
+      if (!mounted || picked == null || picked.files.isEmpty) return;
+      final file = picked.files.single;
+      final bytes = file.bytes;
+      if (bytes == null || bytes.isEmpty) {
+        throw Exception('The selected photo could not be read. Please choose another image.');
+      }
+      if (bytes.length > 20 * 1024 * 1024) {
+        throw Exception('Please choose a photo smaller than 20 MB.');
+      }
+      setState(() {
+        pickedThumbnail = PlatformFile(
+          name: file.name,
+          size: bytes.length,
+          bytes: bytes,
+        );
+      });
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Could not adjust photo: $e')));
-    } finally { if (mounted) setState(() => cropBusy = false); }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not select photo: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => cropBusy = false);
+    }
   }
   String category = 'Bhajan';
   final categories = const ['Bhajan','Aarti','Books','Guru Vani','Pravachan','Satsang','Gallery','Sadhana Music','Notifications','Live'];
@@ -780,7 +799,7 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
     const SizedBox(height: 12),
     TextField(controller: externalUrl, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'External link (optional)', hintText: 'YouTube video, playlist or website URL', prefixIcon: Icon(Icons.link))),
     const SizedBox(height: 12),
-    OutlinedButton.icon(onPressed: busy || cropBusy ? null : chooseAndAdjustPhoto, icon: const Icon(Icons.tune), label: Text(cropBusy ? 'Opening photo editor...' : pickedThumbnail == null ? 'Add / adjust thumbnail or photo' : 'Adjust photo: ${pickedThumbnail!.name}')),
+    OutlinedButton.icon(onPressed: busy || cropBusy ? null : chooseAndAdjustPhoto, icon: const Icon(Icons.tune), label: Text(cropBusy ? 'Opening photo editor...' : pickedThumbnail == null ? 'Select thumbnail or photo' : 'Change photo: ${pickedThumbnail!.name}')),
     if (pickedThumbnail?.bytes != null) Padding(padding: const EdgeInsets.only(top: 8), child: ClipRRect(borderRadius: BorderRadius.circular(14), child: Image.memory(pickedThumbnail!.bytes!, height: 150, fit: BoxFit.contain))),
     const SizedBox(height: 8),
     OutlinedButton.icon(onPressed: busy ? null : () async { final r = await FilePicker.platform.pickFiles(type: FileType.video, withData: true); if (r != null && mounted) setState(() => pickedVideo = r.files.single); }, icon: const Icon(Icons.video_library_outlined), label: Text(pickedVideo == null ? 'Add optional video' : 'Video: ${pickedVideo!.name}')),
