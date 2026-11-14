@@ -393,54 +393,63 @@ class GalleryImagePage extends StatelessWidget {
 }
 
 Future<void> openItem(BuildContext context, Map<String, dynamic> item) async {
-  final external = (item['file_url'] ?? '').toString().trim();
-  final video = (item['video_url'] ?? '').toString().trim();
-  final storedImage = (item['thumbnail_url'] ?? '').toString().trim();
-  final image = storedImage.isNotEmpty ? storedImage : (isImageMediaUrl(external) ? external : '');
-  final link = external.isNotEmpty ? external : video.isNotEmpty ? video : image;
-  final category = (item['category'] ?? '').toString().toLowerCase();
+  // file_url is the MAIN media file (or an external link). The thumbnail is
+  // only a card preview and must never replace an available main file.
+  final mainUrl = (item['file_url'] ?? '').toString().trim();
+  final videoUrl = (item['video_url'] ?? '').toString().trim();
+  final thumbnailUrl = (item['thumbnail_url'] ?? '').toString().trim();
   final title = (item['title'] ?? 'Devotional content').toString();
-  final lower = link.toLowerCase().split('?').first;
-  if (link.isEmpty) {
+  final category = (item['category'] ?? '').toString().toLowerCase().trim();
+
+  String target = mainUrl;
+  if (target.isEmpty) target = videoUrl;
+  if (target.isEmpty) target = thumbnailUrl;
+
+  if (target.isEmpty) {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Content link is not available.')));
     return;
   }
-  final isStorageObject = link.contains('/storage/v1/object/public/prabhu/');
-  if (!isStorageObject && (link.startsWith('https://') || link.startsWith('http://'))) {
-    final uri = Uri.tryParse(link);
+
+  final isStorageObject = target.contains('/storage/v1/object/public/prabhu/');
+  final isHttp = target.startsWith('https://') || target.startsWith('http://');
+  if (isHttp && !isStorageObject) {
+    final uri = Uri.tryParse(target);
     if (uri != null && await launchUrl(uri, mode: LaunchMode.externalApplication)) return;
   }
-  if (image.isNotEmpty && (external.isEmpty || isImageMediaUrl(external)) && video.isEmpty) {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => GalleryImagePage(imageUrl: image, title: title)));
+
+  // Inspect the selected MAIN file's path/extension before using its category.
+  // This prevents a thumbnail or a broad category (e.g. Aarti) from deciding
+  // how a different main file is opened.
+  final parsed = Uri.tryParse(target);
+  final path = Uri.decodeComponent(parsed?.path ?? target).toLowerCase();
+  final isPdf = path.endsWith('.pdf');
+  final isAudio = RegExp(r'\.(mp3|m4a|aac|wav|ogg|flac)$', caseSensitive: false).hasMatch(path);
+  final isVideoFile = RegExp(r'\.(mp4|m4v|mov|webm|mkv)$', caseSensitive: false).hasMatch(path);
+  final isImageFile = RegExp(r'\.(png|jpe?g|webp|gif|bmp)$', caseSensitive: false).hasMatch(path);
+
+  if (isPdf || (!isAudio && !isVideoFile && !isImageFile && (category == 'books' || category == 'book'))) {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => PdfReaderPage(url: target, title: title)));
     return;
   }
-  if (video.isNotEmpty && external.isEmpty) {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => InAppVideoPage(url: video, title: title)));
+  if (isAudio || (!isPdf && !isVideoFile && !isImageFile &&
+      (category == 'bhajan' || category == 'aarti' || category == 'audio' || category == 'sadhana music'))) {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => AudioPlayerPage(url: target, title: title)));
     return;
   }
-  // Detect the actual file format before the devotional category. An Aarti
-  // entry may be a PDF booklet, not an audio track.
-  if (isImageMediaUrl(link)) {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => GalleryImagePage(imageUrl: link, title: title)));
+  if (isVideoFile || (!isPdf && !isAudio && !isImageFile && (category == 'video' || (mainUrl.isEmpty && videoUrl.isNotEmpty)))) {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => InAppVideoPage(url: target, title: title)));
     return;
   }
-  if (lower.endsWith('.pdf') || category == 'books' || category == 'book') {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => PdfReaderPage(url: link, title: title)));
+  if (isImageFile || (mainUrl.isEmpty && videoUrl.isEmpty && thumbnailUrl.isNotEmpty)) {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => GalleryImagePage(imageUrl: target, title: title)));
     return;
   }
-  if (category == 'bhajan' || category == 'aarti' || category == 'audio' ||
-      lower.endsWith('.mp3') || lower.endsWith('.m4a') || lower.endsWith('.aac') || lower.endsWith('.wav')) {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => AudioPlayerPage(url: link, title: title)));
-    return;
-  }
-  final isVideo = category == 'video' || RegExp(r'\\.(mp4|m4v|mov|webm)(\\?|$)', caseSensitive: false).hasMatch(link);
-  if (isVideo) {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => InAppVideoPage(url: link, title: title)));
-    return;
-  }
-  final uri = Uri.tryParse(link);
+
+  final uri = Uri.tryParse(target);
   if (uri == null || !await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-    if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('This content link could not be opened.')));
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('This content file could not be opened.')));
+    }
   }
 }
 
@@ -714,47 +723,15 @@ class _AdminDashboardPageState extends State<AdminDashboardPage> {
   }
 
   Future<List<Map<String, dynamic>>> loadManagedContent() async {
-    final rows = await Supabase.instance.client.from('devotional_content').select('id,title,category,file_url,created_at,published').order('created_at', ascending: false);
+    final rows = await Supabase.instance.client.from('devotional_content').select('id,title,category,file_url,thumbnail_url,video_url,description,created_at,published').order('created_at', ascending: false);
     return List<Map<String, dynamic>>.from(rows);
   }
 
 
   Future<void> previewContent(Map<String, dynamic> item) async {
-    final category = (item['category'] ?? '').toString().toLowerCase();
-    final url = (item['file_url'] ?? '').toString();
-    if (url.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Preview is not available for this item.')));
-      return;
-    }
-    if (category == 'gallery' || isImageMediaUrl(url)) {
-      openGalleryImage(context, item);
-      return;
-    }
-    if (category == 'books' || url.toLowerCase().split('?').first.endsWith('.pdf')) {
-      Navigator.push(context, MaterialPageRoute(builder: (_) => PdfReaderPage(url: url, title: (item['title'] ?? 'PDF Preview').toString())));
-      return;
-    }
-    if (category == 'bhajan' || category == 'aarti' || category == 'audio' || category == 'sadhana music' ||
-        RegExp(r'\.(mp3|m4a|aac|wav|ogg)(\?|$)', caseSensitive: false).hasMatch(url)) {
-      Navigator.push(context, MaterialPageRoute(builder: (_) => AudioPlayerPage(url: url, title: (item['title'] ?? 'Audio Preview').toString())));
-      return;
-    }
-    if (RegExp(r'\\.(mp4|m4v|mov|webm)(\\?|$)', caseSensitive: false).hasMatch(url) || category == 'video') {
-      Navigator.push(context, MaterialPageRoute(builder: (_) => InAppVideoPage(url: url, title: (item['title'] ?? 'Video Preview').toString())));
-      return;
-    }
-    final uri = Uri.tryParse(url);
-    if (uri != null && await launchUrl(uri, mode: LaunchMode.externalApplication)) return;
-    if (mounted) {
-      showDialog<void>(context: context, builder: (_) => AlertDialog(
-        title: const Text('File details'),
-        content: Text('Category: ${item['category'] ?? 'Other'}\\nFile URL: $url'),
-        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
-      ));
-    }
+    // Use the same main-file-first routing as the devotee media screen.
+    await openItem(context, item);
   }
-
-  bool isImageMediaUrl(String url) => RegExp(r'\.(png|jpe?g|webp|gif)(\?|$)', caseSensitive: false).hasMatch(url);
 
   Future<void> removeContent(Map<String, dynamic> item) async {
     final id = item['id'];
